@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#1a0a2e">
+
+    <!-- SEO / TapTap 元数据 -->
+    <title>糖果消消乐 - Candy Match</title>
+    <meta name="description" content="糖果消消乐是一款经典的消除类休闲游戏。交换相邻糖果，匹配三个或以上即可消除，还有条纹糖果、彩色炸弹等特殊道具，快来挑战吧！">
+    <meta name="keywords" content="消消乐,消除游戏,糖果消消乐,休闲游戏,益智游戏,三消,match3,candy match">
+    <meta name="author" content="Candy Match Studio">
+
+    <!-- Open Graph / 社交分享 -->
+    <meta property="og:title" content="糖果消消乐 - Candy Match">
+    <meta property="og:description" content="经典消除类休闲游戏，交换糖果，匹配消除，挑战高分！">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="糖果消消乐">
+
+    <!-- 移动端 Web App -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="糖果消消乐">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="format-detection" content="telephone=no">
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container">
+        <!-- 顶部HUD -->
+        <div id="hud">
+            <div class="hud-item">
+                <span class="hud-label">关卡</span>
+                <span id="level-display" class="hud-value">1</span>
+            </div>
+            <div class="hud-item">
+                <span class="hud-label">分数</span>
+                <span id="score-display" class="hud-value">0</span>
+            </div>
+            <div class="hud-item">
+                <span class="hud-label">步数</span>
+                <span id="moves-display" class="hud-value">30</span>
+            </div>
+            <!-- 功能按钮 -->
+            <div class="hud-controls">
+                <button id="sound-btn" class="ctrl-btn" title="音效开关">
+                    <span id="sound-icon">🔊</span>
+                </button>
+                <button id="pause-btn" class="ctrl-btn" title="暂停">
+                    <span>⏸</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 目标进度条 -->
+        <div id="progress-bar-container">
+            <div id="progress-bar"></div>
+            <span id="progress-text">0 / 1000</span>
+        </div>
+
+        <!-- 游戏棋盘 -->
+        <div id="board"></div>
+
+        <!-- Combo提示 -->
+        <div id="combo-text"></div>
+
+        <!-- 粒子层 -->
+        <div id="particles"></div>
+
+        <!-- 开始界面 -->
+        <div id="start-screen" class="overlay">
+            <div class="overlay-content">
+                <h1>🍬 糖果消消乐</h1>
+                <p class="subtitle">Match 3 or more candies!</p>
+                <div class="instructions">
+                    <p>🎯 交换相邻糖果，匹配3个或以上</p>
+                    <p>⭐ 4连消获得条纹糖果</p>
+                    <p>💥 5连消获得彩色炸弹</p>
+                    <p>🔗 连锁消除获得额外分数</p>
+                </div>
+                <div id="best-record" class="best-record hidden">
+                    <p>🏆 最高分：<span id="best-score-val">0</span></p>
+                    <p>🎯 最高关卡：<span id="best-level-val">1</span></p>
+                </div>
+                <button id="start-btn" class="game-btn">开始游戏</button>
+                <!-- 合规信息 -->
+                <div class="compliance-info">
+                    <p class="age-rating">适龄提示：4+</p>
+                    <p class="health-notice">健康游戏忠告：抵制不良游戏，拒绝盗版游戏。注意自我保护，谨防受骗上当。适度游戏益脑，沉迷游戏伤身。合理安排时间，享受健康生活。</p>
+                    <a href="privacy.html" target="_blank" class="privacy-link">隐私政策</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 暂停界面 -->
+        <div id="pause-screen" class="overlay hidden">
+            <div class="overlay-content">
+                <h1>⏸ 已暂停</h1>
+                <button id="resume-btn" class="game-btn">继续游戏</button>
+                <button id="restart-from-pause-btn" class="game-btn btn-secondary">重新开始</button>
+            </div>
+        </div>
+
+        <!-- 关卡完成界面 -->
+        <div id="level-complete" class="overlay hidden">
+            <div class="overlay-content">
+                <h1>🎉 通关！</h1>
+                <p>分数：<span id="final-score">0</span></p>
+                <p>剩余步数奖励：<span id="bonus-score">0</span></p>
+                <button id="next-level-btn" class="game-btn">下一关</button>
+            </div>
+        </div>
+
+        <!-- 游戏结束界面 -->
+        <div id="game-over" class="overlay hidden">
+            <div class="overlay-content">
+                <h1>💔 游戏结束</h1>
+                <p>最终分数：<span id="game-over-score">0</span></p>
+                <p>到达关卡：<span id="game-over-level">1</span></p>
+                <button id="restart-btn" class="game-btn">重新开始</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>

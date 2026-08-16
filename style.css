@@ -1,0 +1,582 @@
+/* ===== 全局重置 ===== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+}
+
+html, body {
+    width: 100%;
+    min-height: 100vh;
+    overflow-x: hidden;
+    font-family: 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: linear-gradient(135deg, #1a0a2e 0%, #16213e 50%, #0f3460 100%);
+}
+
+/* ===== 游戏容器 ===== */
+#game-container {
+    position: relative;
+    width: 100%;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 10px;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+/* ===== 顶部HUD ===== */
+#hud {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    width: 100%;
+    max-width: 420px;
+    padding: 10px 15px;
+    margin-bottom: 8px;
+    gap: 6px;
+}
+
+.hud-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 8px 16px;
+    min-width: 90px;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.hud-label {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 2px;
+}
+
+.hud-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+    transition: transform 0.2s ease;
+}
+
+.hud-value.pulse {
+    animation: pulse 0.4s ease;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.3); color: #ffd700; }
+}
+
+/* ===== 进度条 ===== */
+#progress-bar-container {
+    width: 100%;
+    max-width: 420px;
+    height: 24px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    position: relative;
+}
+
+#progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #00d2ff, #3a7bd5, #00d2ff);
+    background-size: 200% 100%;
+    border-radius: 10px;
+    transition: width 0.5s ease;
+    animation: shimmer 2s linear infinite;
+}
+
+@keyframes shimmer {
+    0% { background-position: 0% 0; }
+    100% { background-position: 200% 0; }
+}
+
+#progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 12px;
+    color: #fff;
+    font-weight: bold;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+    white-space: nowrap;
+    z-index: 1;
+}
+
+/* ===== 游戏棋盘 ===== */
+#board {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    gap: 2px;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 2px 8px rgba(0, 0, 0, 0.3);
+    width: min(92vw, 420px);
+    aspect-ratio: 1;
+    max-width: 420px;
+    flex-shrink: 0;
+    touch-action: none;
+}
+
+/* ===== 糖果单元格 ===== */
+.cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    overflow: visible;
+}
+
+.candy {
+    width: 80%;
+    height: 80%;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.2s ease, opacity 0.3s ease;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.candy:hover {
+    transform: scale(1.1);
+}
+
+.candy.selected {
+    transform: scale(1.15);
+    filter: brightness(1.4) drop-shadow(0 0 12px rgba(255, 255, 255, 0.8));
+    z-index: 10;
+}
+
+.candy.removing {
+    animation: candyRemove 0.4s ease forwards;
+}
+
+@keyframes candyRemove {
+    0% { transform: scale(1); opacity: 1; }
+    40% { transform: scale(1.4) rotate(180deg); opacity: 1; filter: brightness(2); }
+    100% { transform: scale(0) rotate(360deg); opacity: 0; }
+}
+
+.candy.falling {
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.candy.swapping {
+    transition: transform 0.25s ease;
+    z-index: 5;
+}
+
+/* ===== 糖果类型样式 ===== */
+/* 红色 - 圆形 */
+.candy-red {
+    background: radial-gradient(circle at 30% 30%, #ff6b6b, #ee0a0a);
+    box-shadow: 0 2px 8px rgba(238, 10, 10, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 4px 8px rgba(255, 255, 255, 0.3);
+}
+
+/* 蓝色 - 圆形 */
+.candy-blue {
+    background: radial-gradient(circle at 30% 30%, #6bb6ff, #0a6eee);
+    box-shadow: 0 2px 8px rgba(10, 110, 238, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 4px 8px rgba(255, 255, 255, 0.3);
+}
+
+/* 绿色 - 圆形 */
+.candy-green {
+    background: radial-gradient(circle at 30% 30%, #6bff9e, #0aaa3a);
+    box-shadow: 0 2px 8px rgba(10, 170, 58, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 4px 8px rgba(255, 255, 255, 0.3);
+}
+
+/* 黄色 - 圆形 */
+.candy-yellow {
+    background: radial-gradient(circle at 30% 30%, #ffe66b, #eeb00a);
+    box-shadow: 0 2px 8px rgba(238, 176, 10, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 4px 8px rgba(255, 255, 255, 0.3);
+}
+
+/* 紫色 - 圆形 */
+.candy-purple {
+    background: radial-gradient(circle at 30% 30%, #c46bff, #7a0aee);
+    box-shadow: 0 2px 8px rgba(122, 10, 238, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 4px 8px rgba(255, 255, 255, 0.3);
+}
+
+/* 橙色 - 圆形 */
+.candy-orange {
+    background: radial-gradient(circle at 30% 30%, #ffb36b, #ee6a0a);
+    box-shadow: 0 2px 8px rgba(238, 106, 10, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 4px 8px rgba(255, 255, 255, 0.3);
+}
+
+/* ===== 特殊糖果 - 条纹 ===== */
+.candy.striped-h::after {
+    content: '';
+    position: absolute;
+    top: 15%;
+    left: 10%;
+    right: 10%;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 2px;
+    box-shadow: 0 8px 0 rgba(255, 255, 255, 0.6), 0 -8px 0 rgba(255, 255, 255, 0.6);
+    animation: stripedGlow 1s ease infinite;
+}
+
+.candy.striped-v::after {
+    content: '';
+    position: absolute;
+    left: 15%;
+    top: 10%;
+    bottom: 10%;
+    width: 3px;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 2px;
+    box-shadow: 8px 0 0 rgba(255, 255, 255, 0.6), -8px 0 0 rgba(255, 255, 255, 0.6);
+    animation: stripedGlow 1s ease infinite;
+}
+
+@keyframes stripedGlow {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+
+/* ===== 特殊糖果 - 彩色炸弹 ===== */
+.candy.color-bomb {
+    background: conic-gradient(#ff6b6b, #6bb6ff, #6bff9e, #ffe66b, #c46bff, #ffb36b, #ff6b6b);
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.5), inset 0 0 15px rgba(0, 0, 0, 0.3);
+    animation: colorBombSpin 3s linear infinite;
+}
+
+@keyframes colorBombSpin {
+    0% { filter: hue-rotate(0deg); }
+    100% { filter: hue-rotate(360deg); }
+}
+
+.candy.color-bomb::after {
+    content: '★';
+    font-size: 24px;
+    color: #fff;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+    animation: starPulse 1s ease infinite;
+}
+
+@keyframes starPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+}
+
+/* ===== 特殊糖果 - 包装糖 ===== */
+.candy.wrapped {
+    box-shadow: 0 0 15px currentColor, inset 0 0 10px rgba(255, 255, 255, 0.5);
+    animation: wrappedPulse 1.5s ease infinite;
+}
+
+.candy.wrapped::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border: 2px solid rgba(255, 255, 255, 0.6);
+    border-radius: 50%;
+    animation: wrappedRing 1.5s ease infinite;
+}
+
+@keyframes wrappedPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+@keyframes wrappedRing {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.1); }
+}
+
+/* ===== Combo文字 ===== */
+#combo-text {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 48px;
+    font-weight: bold;
+    color: #ffd700;
+    text-shadow: 0 0 20px rgba(255, 215, 0, 0.8), 0 4px 8px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    opacity: 0;
+    z-index: 100;
+    white-space: nowrap;
+}
+
+#combo-text.show {
+    animation: comboShow 1.2s ease forwards;
+}
+
+@keyframes comboShow {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+    20% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+    80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -80%) scale(0.8); }
+}
+
+/* ===== 粒子效果 ===== */
+#particles {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 50;
+}
+
+.particle {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    animation: particleFly 0.8s ease forwards;
+}
+
+@keyframes particleFly {
+    0% { opacity: 1; transform: scale(1) translate(0, 0); }
+    100% { opacity: 0; transform: scale(0) translate(var(--dx), var(--dy)); }
+}
+
+/* ===== 分数飘字 ===== */
+.score-popup {
+    position: absolute;
+    font-size: 18px;
+    font-weight: bold;
+    color: #ffd700;
+    text-shadow: 0 0 6px rgba(255, 215, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    z-index: 60;
+    animation: scorePopup 1s ease forwards;
+}
+
+@keyframes scorePopup {
+    0% { opacity: 0; transform: translateY(0) scale(0.5); }
+    20% { opacity: 1; transform: translateY(-10px) scale(1.2); }
+    100% { opacity: 0; transform: translateY(-50px) scale(1); }
+}
+
+/* ===== 覆盖层 ===== */
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    backdrop-filter: blur(8px);
+    transition: opacity 0.3s ease;
+}
+
+.overlay.hidden {
+    display: none;
+}
+
+.overlay-content {
+    background: linear-gradient(135deg, #1a0a2e, #16213e);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 20px;
+    padding: 40px;
+    text-align: center;
+    max-width: 360px;
+    width: 90%;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
+
+.overlay-content h1 {
+    font-size: 36px;
+    color: #fff;
+    margin-bottom: 12px;
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+}
+
+.overlay-content .subtitle {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 16px;
+    margin-bottom: 20px;
+}
+
+.overlay-content .instructions {
+    text-align: left;
+    margin: 20px 0;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+}
+
+.overlay-content .instructions p {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 14px;
+    margin-bottom: 8px;
+    line-height: 1.6;
+}
+
+.overlay-content p {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 18px;
+    margin-bottom: 8px;
+}
+
+.overlay-content span {
+    color: #ffd700;
+    font-weight: bold;
+}
+
+/* ===== 按钮 ===== */
+.game-btn {
+    background: linear-gradient(135deg, #ff6b6b, #ee0a0a);
+    color: #fff;
+    border: none;
+    padding: 14px 40px;
+    font-size: 20px;
+    font-weight: bold;
+    border-radius: 30px;
+    cursor: pointer;
+    margin-top: 16px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 4px 16px rgba(238, 10, 10, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.game-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(238, 10, 10, 0.6);
+}
+
+.game-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(238, 10, 10, 0.4);
+}
+
+.game-btn.btn-secondary {
+    background: linear-gradient(135deg, #3a7bd5, #0a6eee);
+    box-shadow: 0 4px 16px rgba(10, 110, 238, 0.4);
+}
+
+.game-btn.btn-secondary:hover {
+    box-shadow: 0 6px 20px rgba(10, 110, 238, 0.6);
+}
+
+/* ===== HUD 控制按钮 ===== */
+.hud-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ctrl-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    color: #fff;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease, background 0.2s ease;
+    padding: 0;
+    line-height: 1;
+}
+
+.ctrl-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.05);
+}
+
+.ctrl-btn:active {
+    transform: scale(0.95);
+}
+
+/* ===== 最佳记录 ===== */
+.best-record {
+    margin: 12px 0;
+    padding: 12px;
+    background: rgba(255, 215, 0, 0.1);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 215, 0, 0.2);
+}
+
+.best-record p {
+    color: rgba(255, 215, 0, 0.9);
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+/* ===== 合规信息 ===== */
+.compliance-info {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.age-rating {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 6px;
+}
+
+.health-notice {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+    line-height: 1.5;
+    margin-bottom: 8px;
+}
+
+.privacy-link {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    text-decoration: underline;
+}
+
+.privacy-link:hover {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* ===== 响应式 ===== */
+@media (max-height: 600px) {
+    #hud { padding: 5px 10px; margin-bottom: 4px; gap: 4px; }
+    .hud-item { padding: 4px 10px; min-width: 60px; }
+    .hud-value { font-size: 18px; }
+    .hud-label { font-size: 10px; }
+    .ctrl-btn { width: 32px; height: 32px; font-size: 15px; }
+    #progress-bar-container { height: 18px; margin-bottom: 6px; }
+    #board { padding: 4px; }
+}
+
+@media (max-width: 380px) {
+    .hud-item { padding: 6px 8px; min-width: 56px; }
+    .hud-value { font-size: 20px; }
+    .ctrl-btn { width: 34px; height: 34px; font-size: 16px; }
+    #combo-text { font-size: 36px; }
+}
