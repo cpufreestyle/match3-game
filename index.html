@@ -42,6 +42,11 @@
                 <span class="hud-label">步数</span>
                 <span id="moves-display" class="hud-value">30</span>
             </div>
+            <!-- 星星货币 -->
+            <div class="hud-item star-display">
+                <span class="hud-label">⭐</span>
+                <span id="star-count" class="hud-value">0</span>
+            </div>
             <!-- 功能按钮 -->
             <div class="hud-controls">
                 <button id="sound-btn" class="ctrl-btn" title="音效开关">
@@ -57,6 +62,22 @@
         <div id="progress-bar-container">
             <div id="progress-bar"></div>
             <span id="progress-text">0 / 1000</span>
+        </div>
+
+        <!-- 道具栏 -->
+        <div id="item-bar">
+            <button id="item-extra-moves" class="item-btn" title="+3步 (30⭐)">
+                <span class="item-icon">➕</span>
+                <span class="item-cost">30⭐</span>
+            </button>
+            <button id="item-hammer" class="item-btn" title="锤子 (50⭐)">
+                <span class="item-icon">🔨</span>
+                <span class="item-cost">50⭐</span>
+            </button>
+            <button id="item-shuffle" class="item-btn" title="洗牌 (20⭐)">
+                <span class="item-icon">🔄</span>
+                <span class="item-cost">20⭐</span>
+            </button>
         </div>
 
         <!-- 游戏棋盘 -->
@@ -78,12 +99,16 @@
                     <p>⭐ 4连消获得条纹糖果</p>
                     <p>💥 5连消获得彩色炸弹</p>
                     <p>🔗 连锁消除获得额外分数</p>
+                    <p>🎨 特殊糖果组合触发大爆炸！</p>
                 </div>
                 <div id="best-record" class="best-record hidden">
                     <p>🏆 最高分：<span id="best-score-val">0</span></p>
                     <p>🎯 最高关卡：<span id="best-level-val">1</span></p>
                 </div>
-                <button id="start-btn" class="game-btn">开始游戏</button>
+                <div class="mode-select">
+                    <button id="start-btn" class="game-btn">经典模式</button>
+                    <button id="daily-btn" class="game-btn btn-secondary">⏱ 每日挑战</button>
+                </div>
                 <!-- 合规信息 -->
                 <div class="compliance-info">
                     <p class="age-rating">适龄提示：4+</p>
