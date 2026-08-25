@@ -720,3 +720,71 @@ html, body {
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.05); }
 }
+
+/* ===== 成就面板 ===== */
+.ach-content {
+    max-width: 380px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+#ach-list {
+    text-align: left;
+    margin: 16px 0;
+}
+
+.ach-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    margin-bottom: 6px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.ach-item.unlocked {
+    border-left: 3px solid #ffd700;
+}
+
+.ach-item.locked {
+    opacity: 0.5;
+    border-left: 3px solid rgba(255, 255, 255, 0.2);
+}
+
+.ach-item-name {
+    font-size: 15px;
+    font-weight: bold;
+    color: #fff;
+}
+
+.ach-item-desc {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* ===== 开始界面额外按钮 ===== */
+.start-extra-btns {
+    margin-top: 8px;
+}
+
+.text-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 215, 0, 0.7);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 8px 16px;
+    text-decoration: underline;
+}
+
+/* ===== 文字按钮(返回菜单) ===== */
+.game-btn.btn-text {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.6);
+    box-shadow: none;
+    font-size: 16px;
+    margin-top: 8px;
+    padding: 10px 24px;
+}

@@ -78,6 +78,7 @@ class CandyGame {
         this.dailyTimer = null;
         this.dailyTimeLeft = 30;
         this.dailyStartTime = 0;
+        this.gameEpoch = 0; // 异步竞态保护：restart/nextLevel 递增
 
         this.boardEl = document.getElementById('board');
         this.particlesEl = document.getElementById('particles');
@@ -326,7 +327,7 @@ class CandyGame {
         if (this.isProcessing) return;
         this.isProcessing = true;
         this.state = GameState.SWAPPING;
-
+        try {
         const candy1 = this.board[r1][c1];
         const candy2 = this.board[r2][c2];
 
@@ -429,9 +430,11 @@ class CandyGame {
         // 检查游戏状态
         this.checkGameState();
 
-        this.isProcessing = false;
-        if (this.state !== GameState.GAME_OVER) {
-            this.state = GameState.IDLE;
+        } finally {
+            this.isProcessing = false;
+            if (this.state !== GameState.GAME_OVER) {
+                this.state = GameState.IDLE;
+            }
         }
     }
 
@@ -535,52 +538,42 @@ class CandyGame {
 
     // ===== 处理匹配 - 核心循环 =====
     async processMatches() {
+        const epoch = this.gameEpoch;
         while (true) {
+            if (epoch !== this.gameEpoch) return; // 棋盘已重置
             const matches = this.findAllMatches();
             if (matches.length === 0) break;
 
             this.comboCount++;
-            if (this.comboCount > 50) break; // 安全上限，防止无限级联
+            if (this.comboCount > 50) break;
 
-            // 计算分数
             const matchScore = this.calculateScore(matches);
             this.score += matchScore;
             this.updateHUD();
 
-            // 显示combo
             if (this.comboCount >= 2) {
                 this.showCombo(this.comboCount);
             }
 
-            // 收集要消除的糖果
             const toRemove = this.collectMatchedCandies(matches);
-
-            // 检查并创建特殊糖果
             const specialCreated = this.checkSpecialCreation(matches);
-
-            // 激活特殊糖果
             const activatedSpecials = this.activateSpecialsInMatch(toRemove, matches);
-
-            // 合并所有要消除的
             const allToRemove = new Set([...toRemove, ...activatedSpecials]);
-
-            // 从specialCreated中移除将要变为特殊糖果的位置
             for (const sp of specialCreated) {
                 allToRemove.delete(sp.key);
             }
 
-            // 播放消除动画
             this.audio.play('match');
             if (navigator.vibrate) navigator.vibrate(15);
             await this.removeCandies(allToRemove);
+            if (epoch !== this.gameEpoch) return;
 
-            // 创建特殊糖果
             for (const sp of specialCreated) {
                 this.createSpecialAt(sp.row, sp.col, sp.special, sp.type);
             }
 
-            // 下落和填充
             await this.dropAndFill();
+            if (epoch !== this.gameEpoch) return;
 
             this.updateHUD();
         }
@@ -872,13 +865,14 @@ class CandyGame {
         }
 
         this.comboCount = Math.max(this.comboCount, 1);
+        const comboScore = toRemove.size * 40 * this.comboCount;
+        this.score += comboScore;
         await this.removeCandies(toRemove);
         await this.dropAndFill();
         this.updateHUD();
     }
 
     async activateColorBomb(bombCandy, targetType) {
-        // 彩色炸弹：消除所有目标类型的糖果
         const toRemove = new Set();
         toRemove.add(`${bombCandy.row},${bombCandy.col}`);
 
@@ -890,6 +884,9 @@ class CandyGame {
             }
         }
 
+        this.comboCount = Math.max(this.comboCount, 1);
+        const bombScore = toRemove.size * 40 * this.comboCount;
+        this.score += bombScore;
         this.audio.play('special');
         await this.removeCandies(toRemove);
         await this.dropAndFill();
@@ -1216,32 +1213,34 @@ class CandyGame {
     }
 
     hasValidMoves() {
-        // 彩色炸弹总是可以交换（和任何糖果交换都有效）
+        // 彩色炸弹总是可以交换
         for (let r = 0; r < BOARD_SIZE; r++) {
             for (let c = 0; c < BOARD_SIZE; c++) {
                 if (this.board[r][c] && this.board[r][c].special === 'color-bomb') return true;
             }
         }
+        // 检查普通匹配
         for (let r = 0; r < BOARD_SIZE; r++) {
             for (let c = 0; c < BOARD_SIZE; c++) {
-                // 尝试与右边交换
                 if (c < BOARD_SIZE - 1) {
                     this.swapData(r, c, r, c + 1);
-                    if (this.findAllMatches().length > 0) {
-                        this.swapData(r, c, r, c + 1);
-                        return true;
-                    }
+                    if (this.findAllMatches().length > 0) { this.swapData(r, c, r, c + 1); return true; }
                     this.swapData(r, c, r, c + 1);
                 }
-                // 尝试与下面交换
                 if (r < BOARD_SIZE - 1) {
                     this.swapData(r, c, r + 1, c);
-                    if (this.findAllMatches().length > 0) {
-                        this.swapData(r, c, r + 1, c);
-                        return true;
-                    }
+                    if (this.findAllMatches().length > 0) { this.swapData(r, c, r + 1, c); return true; }
                     this.swapData(r, c, r + 1, c);
                 }
+            }
+        }
+        // 检查相邻特殊糖果组合（两个特殊糖果交换总是合法的）
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const candy = this.board[r][c];
+                if (!candy || !candy.special) continue;
+                if (c < BOARD_SIZE - 1 && this.board[r][c+1] && this.board[r][c+1].special) return true;
+                if (r < BOARD_SIZE - 1 && this.board[r+1][c] && this.board[r+1][c].special) return true;
             }
         }
         return false;
@@ -1254,28 +1253,29 @@ class CandyGame {
     }
 
     shuffleBoard() {
-        // 简单洗牌
         const candies = [];
         for (let r = 0; r < BOARD_SIZE; r++) {
             for (let c = 0; c < BOARD_SIZE; c++) {
                 if (this.board[r][c]) candies.push(this.board[r][c]);
             }
         }
-        // Fisher-Yates洗牌
-        for (let i = candies.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [candies[i], candies[j]] = [candies[j], candies[i]];
-        }
-        // 放回棋盘
-        let idx = 0;
-        for (let r = 0; r < BOARD_SIZE; r++) {
-            for (let c = 0; c < BOARD_SIZE; c++) {
-                this.board[r][c] = candies[idx++];
-                if (this.board[r][c]) {
-                    this.board[r][c].row = r;
-                    this.board[r][c].col = c;
+        // 循环洗牌直到有解且无预存匹配（上限10次）
+        for (let attempt = 0; attempt < 10; attempt++) {
+            for (let i = candies.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [candies[i], candies[j]] = [candies[j], candies[i]];
+            }
+            let idx = 0;
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    this.board[r][c] = candies[idx++];
+                    if (this.board[r][c]) {
+                        this.board[r][c].row = r;
+                        this.board[r][c].col = c;
+                    }
                 }
             }
+            if (this.findAllMatches().length === 0 && this.hasValidMoves()) break;
         }
         this.renderBoard();
     }
@@ -1283,13 +1283,16 @@ class CandyGame {
     // ===== 关卡完成 =====
     levelComplete() {
         const bonus = this.moves * 50;
+        const starsEarned = this.level * 5;
         this.score += bonus;
         this.saveBestRecord();
-        this.stars += this.level * 5;
+        this.stars += starsEarned;
         safeSet('candyMatch_stars', this.stars);
         this.checkAchievements();
         document.getElementById('final-score').textContent = this.score;
         document.getElementById('bonus-score').textContent = bonus;
+        const starsEl = document.getElementById('stars-earned');
+        if (starsEl) starsEl.textContent = starsEarned;
         document.getElementById('level-complete').classList.remove('hidden');
         this.audio.play('win');
         this.state = GameState.GAME_OVER;
@@ -1308,6 +1311,11 @@ class CandyGame {
 
     // ===== 每日挑战模式 =====
     startDailyChallenge() {
+        // 已完成今日挑战则不允许重复刷星
+        if (this.dailyChallengeDone) {
+            this.showToast('今日挑战已完成，明天再来吧！', '📅');
+            return;
+        }
         this.gameMode = 'daily';
         this.score = 0;
         this.level = 1;
@@ -1326,42 +1334,20 @@ class CandyGame {
         this.updateHUD();
         this.state = GameState.IDLE;
 
-        // 显示倒计时
-        this.showDailyTimer();
+        this.updateHUD();
         if (this.dailyTimer) clearInterval(this.dailyTimer);
-        this.dailyTimer = setInterval(() => {
-            this.dailyTimeLeft--;
-            this.updateDailyTimer();
-            if (this.dailyTimeLeft <= 0) {
-                clearInterval(this.dailyTimer);
-                this.dailyTimer = null;
-                this.dailyChallengeEnd();
-            }
-        }, 1000);
-    }
-
-    showDailyTimer() {
-        let timerEl = document.getElementById('daily-timer');
-        if (!timerEl) {
-            timerEl = document.createElement('div');
-            timerEl.id = 'daily-timer';
-            timerEl.className = 'daily-timer';
-            document.getElementById('hud').appendChild(timerEl);
-        }
-        this.updateDailyTimer();
-    }
-
-    updateDailyTimer() {
-        const el = document.getElementById('daily-timer');
-        if (el) {
-            el.textContent = `⏱ ${this.dailyTimeLeft}s`;
-            el.style.color = this.dailyTimeLeft <= 5 ? '#ff6b6b' : '#ffd700';
-        }
+            this.dailyTimer = setInterval(() => {
+                this.dailyTimeLeft--;
+                this.updateHUD();
+                if (this.dailyTimeLeft <= 0) { clearInterval(this.dailyTimer); this.dailyTimer = null; this.dailyChallengeEnd(); }
+            }, 1000);
     }
 
     dailyChallengeEnd() {
+        this.gameEpoch++;
         this.state = GameState.GAME_OVER;
-        this.gameMode = 'classic'; // 结束后切回经典模式
+        this.gameMode = 'classic';
+        this.isDailyEnd = true; // 显式标志
         this.dailyChallengeDone = true;
         safeSet('candyMatch_dailyDone', new Date().toDateString());
         this.saveBestRecord();
@@ -1384,9 +1370,10 @@ class CandyGame {
 
     // ===== 下一关 =====
     nextLevel() {
+        this.gameEpoch++;
         this.level++;
-        this.targetScore = 1000 + (this.level - 1) * 800;
-        this.moves = 25 + Math.min(this.level * 2, 15);
+        this.targetScore = 1000 + (this.level - 1) * 600;
+        this.moves = 30 + Math.min((this.level - 1) * 2, 12);
         this.comboCount = 0;
         document.getElementById('level-complete').classList.add('hidden');
         this.generateBoard();
@@ -1397,10 +1384,9 @@ class CandyGame {
 
     // ===== 重新开始 =====
     restart() {
+        this.gameEpoch++;
         this.gameMode = 'classic';
         if (this.dailyTimer) { clearInterval(this.dailyTimer); this.dailyTimer = null; }
-        const timerEl = document.getElementById('daily-timer');
-        if (timerEl) timerEl.remove();
         this.level = 1;
         this.score = 0;
         this.targetScore = 1000;
@@ -1697,8 +1683,8 @@ document.getElementById('start-btn').addEventListener('click', () => {
 
 document.getElementById('next-level-btn').addEventListener('click', () => {
     if (!game) return;
-    // 每日挑战结束后回到开始界面
-    if (game.gameMode === 'daily' || game.state === GameState.GAME_OVER && document.querySelector('#level-complete h1').textContent.includes('挑战')) {
+    if (game.isDailyEnd) {
+        game.isDailyEnd = false;
         game.restart();
         document.getElementById('start-screen').classList.remove('hidden');
         return;
@@ -1727,12 +1713,68 @@ document.getElementById('restart-from-pause-btn').addEventListener('click', () =
 });
 
 // 每日挑战
+
 document.getElementById('daily-btn').addEventListener('click', () => {
+
     document.getElementById('start-screen').classList.add('hidden');
-    if (!game) {
-        game = new CandyGame();
-    }
+
+    if (!game) { game = new CandyGame(); }
+
     game.startDailyChallenge();
+
+});
+
+
+// 返回主菜单
+
+document.getElementById('back-to-menu-btn').addEventListener('click', () => {
+
+    if (game) {
+
+        game.resume();
+
+        game.restart();
+
+        document.getElementById('start-screen').classList.remove('hidden');
+
+    }
+
+});
+
+
+// 成就面板
+
+document.getElementById('achievements-btn').addEventListener('click', () => {
+
+    const ach = ACHIEVEMENTS;
+
+    const unlocked = game ? game.unlockedAchievements : safeGetJSON('candyMatch_achievements', []);
+
+    const list = document.getElementById('ach-list');
+
+    list.innerHTML = ach.map(a => {
+
+        const isUnlocked = unlocked.includes(a.id);
+
+        return `<div class="ach-item ${isUnlocked ? 'unlocked' : 'locked'}">
+
+            <span class="ach-item-name">${isUnlocked ? a.name : '🔒 ' + a.name}</span>
+
+            <span class="ach-item-desc">${a.desc}</span>
+
+        </div>`;
+
+    }).join('');
+
+    document.getElementById('achievements-panel').classList.remove('hidden');
+
+});
+
+
+document.getElementById('ach-close-btn').addEventListener('click', () => {
+
+    document.getElementById('achievements-panel').classList.add('hidden');
+
 });
 
 // 道具按钮
@@ -1771,4 +1813,16 @@ document.getElementById('sound-btn').addEventListener('click', () => {
     var stars = parseInt(safeGet('candyMatch_stars', 0)) || 0;
     var starEl = document.getElementById('star-count');
     if (starEl) starEl.textContent = stars;
+
+    // 每日挑战状态
+    var dailyDone = safeGet('candyMatch_dailyDone', '') === new Date().toDateString();
+    var dailyBtn = document.getElementById('daily-btn');
+    if (dailyDone && dailyBtn) {
+        var today = new Date().toDateString();
+        var bestKey = 'candyMatch_dailyBest_' + today;
+        var best = parseInt(safeGet(bestKey, 0)) || 0;
+        dailyBtn.textContent = '✓ 今日已挑战';
+        dailyBtn.disabled = true;
+        dailyBtn.style.opacity = '0.5';
+    }
 })();
