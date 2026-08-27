@@ -277,6 +277,34 @@ class CandyGame {
             onPointerUp({ target: document.elementFromPoint(touch.clientX, touch.clientY) });
         });
         this.boardEl.addEventListener('touchcancel', () => { startCell = null; });
+
+        // 键盘支持（桌面端）
+        document.addEventListener('keydown', (e) => {
+            if (!this.selectedCell) {
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                    this.selectCell(4, 4);
+                    e.preventDefault();
+                }
+                return;
+            }
+            const { row, col } = this.selectedCell;
+            let nr = row, nc = col;
+            if (e.key === 'ArrowUp') nr = Math.max(0, row - 1);
+            else if (e.key === 'ArrowDown') nr = Math.min(BOARD_SIZE - 1, row + 1);
+            else if (e.key === 'ArrowLeft') nc = Math.max(0, col - 1);
+            else if (e.key === 'ArrowRight') nc = Math.min(BOARD_SIZE - 1, col + 1);
+            else if (e.key === 'Enter' || e.key === ' ') return;
+            else return;
+            e.preventDefault();
+            const dr = Math.abs(nr - row), dc = Math.abs(nc - col);
+            if (dr + dc === 1) {
+                this.deselectCell();
+                this.attemptSwap(row, col, nr, nc);
+            } else {
+                this.deselectCell();
+                this.selectCell(nr, nc);
+            }
+        });
     }
 
     getCellFromEvent(e) {
@@ -884,6 +912,10 @@ class CandyGame {
             }
         }
 
+        // 被消除的同色特殊糖果也触发其效果
+        const triggered = this.activateSpecialsInMatch(toRemove, []);
+        for (const k of triggered) toRemove.add(k);
+
         this.comboCount = Math.max(this.comboCount, 1);
         const bombScore = toRemove.size * 40 * this.comboCount;
         this.score += bombScore;
@@ -1380,6 +1412,16 @@ class CandyGame {
         this.renderBoard();
         this.updateHUD();
         this.state = GameState.IDLE;
+        this.showLevelBanner(this.level);
+    }
+
+    showLevelBanner(level) {
+        const banner = document.createElement('div');
+        banner.className = 'level-banner';
+        banner.textContent = `关卡 ${level}`;
+        document.getElementById('game-container').appendChild(banner);
+        setTimeout(() => banner.classList.add('show'), 50);
+        setTimeout(() => { banner.classList.remove('show'); setTimeout(() => banner.remove(), 400); }, 1500);
     }
 
     // ===== 重新开始 =====
@@ -1821,7 +1863,7 @@ document.getElementById('sound-btn').addEventListener('click', () => {
         var today = new Date().toDateString();
         var bestKey = 'candyMatch_dailyBest_' + today;
         var best = parseInt(safeGet(bestKey, 0)) || 0;
-        dailyBtn.textContent = '✓ 今日已挑战';
+        dailyBtn.textContent = '✓ 今日最佳 ' + best;
         dailyBtn.disabled = true;
         dailyBtn.style.opacity = '0.5';
     }

@@ -26,7 +26,9 @@ html, body {
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
-    padding-top: 10px;
+    padding-top: max(10px, env(safe-area-inset-top));
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
     max-width: 500px;
     margin: 0 auto;
 }
@@ -193,41 +195,50 @@ html, body {
     z-index: 5;
 }
 
-/* ===== 糖果类型样式 ===== */
+/* ===== 糖果类型样式（颜色+形状差异化，色盲友好） ===== */
 /* 红色 - 圆形 */
 .candy-red {
     background: radial-gradient(circle at 30% 30%, #ff6b6b, #ee0a0a);
     box-shadow: 0 2px 8px rgba(238, 10, 10, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 4px 8px rgba(255, 255, 255, 0.3);
 }
 
-/* 蓝色 - 圆形 */
+/* 蓝色 - 方形 */
 .candy-blue {
-    background: radial-gradient(circle at 30% 30%, #6bb6ff, #0a6eee);
+    border-radius: 20%;
+    background: linear-gradient(135deg, #6bb6ff, #0a6eee);
     box-shadow: 0 2px 8px rgba(10, 110, 238, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 4px 8px rgba(255, 255, 255, 0.3);
 }
 
-/* 绿色 - 圆形 */
+/* 绿色 - 菱形 */
 .candy-green {
-    background: radial-gradient(circle at 30% 30%, #6bff9e, #0aaa3a);
+    border-radius: 15%;
+    transform: rotate(45deg) scale(0.72);
+    background: linear-gradient(135deg, #6bff9e, #0aaa3a);
     box-shadow: 0 2px 8px rgba(10, 170, 58, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 4px 8px rgba(255, 255, 255, 0.3);
 }
 
-/* 黄色 - 圆形 */
+.candy-green.selected { transform: rotate(45deg) scale(0.82); }
+.candy-green:hover { transform: rotate(45deg) scale(0.78); }
+
+/* 黄色 - 六边形 */
 .candy-yellow {
-    background: radial-gradient(circle at 30% 30%, #ffe66b, #eeb00a);
-    box-shadow: 0 2px 8px rgba(238, 176, 10, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 4px 8px rgba(255, 255, 255, 0.3);
+    clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+    background: linear-gradient(135deg, #ffe66b, #eeb00a);
+    box-shadow: 0 2px 8px rgba(238, 176, 10, 0.5);
 }
 
-/* 紫色 - 圆形 */
+/* 紫色 - 圆角方形 */
 .candy-purple {
-    background: radial-gradient(circle at 30% 30%, #c46bff, #7a0aee);
+    border-radius: 30%;
+    background: linear-gradient(135deg, #c46bff, #7a0aee);
     box-shadow: 0 2px 8px rgba(122, 10, 238, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 4px 8px rgba(255, 255, 255, 0.3);
 }
 
-/* 橙色 - 圆形 */
+/* 橙色 - 星形 */
 .candy-orange {
-    background: radial-gradient(circle at 30% 30%, #ffb36b, #ee6a0a);
-    box-shadow: 0 2px 8px rgba(238, 106, 10, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 4px 8px rgba(255, 255, 255, 0.3);
+    clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+    background: linear-gradient(135deg, #ffb36b, #ee6a0a);
+    box-shadow: 0 2px 8px rgba(238, 106, 10, 0.5);
 }
 
 /* ===== 特殊糖果 - 条纹 ===== */
@@ -494,9 +505,9 @@ html, body {
 }
 
 .ctrl-btn {
-    width: 38px;
-    height: 38px;
-    border-radius: 10px;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.15);
     background: rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(8px);
@@ -787,4 +798,25 @@ html, body {
     font-size: 16px;
     margin-top: 8px;
     padding: 10px 24px;
+}
+
+/* ===== 关卡过渡横幅 ===== */
+.level-banner {
+    position: fixed;
+    top: 45%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.5);
+    font-size: 42px;
+    font-weight: bold;
+    color: #ffd700;
+    text-shadow: 0 0 24px rgba(255, 215, 0, 0.8), 0 4px 12px rgba(0, 0, 0, 0.6);
+    z-index: 250;
+    opacity: 0;
+    transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+}
+
+.level-banner.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
 }
