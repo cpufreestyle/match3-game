@@ -1407,6 +1407,9 @@ class CandyGame {
         this.targetScore = 1000 + (this.level - 1) * 600;
         this.moves = 30 + Math.min((this.level - 1) * 2, 12);
         this.comboCount = 0;
+        this.adMoveBoostsUsed = 0;
+        this.reviveUsed = false;
+        document.getElementById('revive-ad-btn').style.display = '';
         document.getElementById('level-complete').classList.add('hidden');
         this.generateBoard();
         this.renderBoard();
@@ -1429,6 +1432,9 @@ class CandyGame {
         this.gameEpoch++;
         this.gameMode = 'classic';
         if (this.dailyTimer) { clearInterval(this.dailyTimer); this.dailyTimer = null; }
+        this.adMoveBoostsUsed = 0;
+        this.reviveUsed = false;
+        document.getElementById('revive-ad-btn').style.display = '';
         this.level = 1;
         this.score = 0;
         this.targetScore = 1000;
@@ -1482,6 +1488,72 @@ class CandyGame {
 
         // 星星货币
         this.updateStarDisplay();
+    }
+
+    // ===== 激励广告 =====
+    watchAdForMoves() {
+        // 每局限2次
+        this.adMoveBoostsUsed = this.adMoveBoostsUsed || 0;
+        if (this.adMoveBoostsUsed >= AD_CONFIG.moveBoostPerLevel) {
+            this.showToast('本局限次已用完');
+            return;
+        }
+        this.showRewardedAd(() => {
+            this.adMoveBoostsUsed++;
+            this.moves += AD_CONFIG.moveBoostAmount;
+            this.updateHUD();
+            this.showToast(`+${AD_CONFIG.moveBoostAmount}步！`, '📺');
+        });
+    }
+
+    watchAdForStars() {
+        const today = new Date().toDateString();
+        const key = 'candyMatch_adStars_' + today;
+        const used = parseInt(safeGet(key, 0)) || 0;
+        if (used >= AD_CONFIG.dailyBonusLimit) {
+            this.showToast('今日广告奖励已领完', '📺');
+            return;
+        }
+        this.showRewardedAd(() => {
+            safeSet(key, used + 1);
+            this.stars += AD_CONFIG.dailyBonusStars;
+            safeSet('candyMatch_stars', this.stars);
+            this.updateStarDisplay();
+            this.showToast(`+${AD_CONFIG.dailyBonusStars}⭐！`, '📺');
+        });
+    }
+
+    watchAdToRevive() {
+        if (this.reviveUsed) {
+            this.showToast('本局已复活过');
+            return;
+        }
+        this.reviveUsed = true;
+        document.getElementById('revive-ad-btn').style.display = 'none';
+        this.showRewardedAd(() => {
+            this.moves = AD_CONFIG.reviveMoves;
+            this.state = GameState.IDLE;
+            document.getElementById('game-over').classList.add('hidden');
+            this.updateHUD();
+            this.showToast(`复活！+${AD_CONFIG.reviveMoves}步`, '📺');
+        });
+    }
+
+    showRewardedAd(onReward) {
+        this.showAdLoading();
+        const provider = getAdProvider();
+        provider.showRewardedAd(
+            () => { this.hideAdLoading(); onReward(); },
+            () => { this.hideAdLoading(); this.showToast('广告加载失败，请稍后再试', '⚠️'); }
+        );
+    }
+
+    showAdLoading() {
+        this.isPaused = true;
+    }
+
+    hideAdLoading() {
+        this.isPaused = false;
     }
 
     // ===== 道具系统 =====
@@ -1556,6 +1628,65 @@ class CandyGame {
     wait(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
+}
+
+// ============================================================
+//  广告系统 — AdProvider 抽象层
+//  当前使用 MockProvider（模拟5秒激励视频）。
+//  接入真实广告时，实现 RealAdProvider 的 load()/show() 并在
+//  AD_CONFIG.provider 中切换即可，游戏逻辑无需改动。
+// ============================================================
+const AD_CONFIG = {
+    provider: 'mock',           // 'mock' | 'real'
+    real: {},                   // 真实SDK配置：拿到广告位ID后填入并切换 provider
+    dailyBonusStars: 20,
+    dailyBonusLimit: 1,
+    moveBoostAmount: 5,
+    moveBoostPerLevel: 2,
+    reviveMoves: 10
+};
+
+class MockAdProvider {
+    showRewardedAd(onReward, onFail, onStateChange) {
+        if (onStateChange) onStateChange('loading');
+        const overlay = document.createElement('div');
+        overlay.className = 'ad-overlay';
+        overlay.innerHTML = `<div class="ad-box"><div class="ad-label">模拟广告</div><div class="ad-countdown">5</div><div class="ad-tip">接入真实广告SDK后此处播放激励视频</div></div>`;
+        document.getElementById('game-container').appendChild(overlay);
+        let left = 5;
+        const timer = setInterval(() => {
+            left--;
+            const cd = overlay.querySelector('.ad-countdown');
+            if (cd) cd.textContent = left;
+            if (left <= 0) {
+                clearInterval(timer);
+                overlay.remove();
+                if (onStateChange) onStateChange('closed');
+                onReward();
+            }
+        }, 1000);
+    }
+}
+
+class RealAdProvider {
+    constructor(config) { this.config = config.real; this.sdkReady = false; }
+    loadSdk() {
+        if (this.sdkReady || !this.config.sdkUrl) return;
+        const s = document.createElement('script');
+        s.src = this.config.sdkUrl;
+        s.async = true;
+        s.onload = () => { this.sdkReady = true; };
+        document.head.appendChild(s);
+    }
+    showRewardedAd(onReward, onFail) {
+        this.loadSdk();
+        // TODO: 按所选广告平台SDK文档实现播放流程，成功后调用 onReward()
+        onFail();
+    }
+}
+
+function getAdProvider() {
+    return AD_CONFIG.provider === 'real' ? new RealAdProvider(AD_CONFIG) : new MockAdProvider();
 }
 
 // ===== 音效系统 (Web Audio API) =====
@@ -1823,6 +1954,8 @@ document.getElementById('ach-close-btn').addEventListener('click', () => {
 document.getElementById('item-extra-moves').addEventListener('click', () => { if (game) game.useItem('extra-moves'); });
 document.getElementById('item-hammer').addEventListener('click', () => { if (game) game.useItem('hammer'); });
 document.getElementById('item-shuffle').addEventListener('click', () => { if (game) game.useItem('shuffle'); });
+document.getElementById('item-ad-moves').addEventListener('click', () => { if (game) game.watchAdForMoves(); });
+document.getElementById('revive-ad-btn').addEventListener('click', () => { if (game) game.watchAdToRevive(); });
 
 // 音效开关
 document.getElementById('sound-btn').addEventListener('click', () => {
