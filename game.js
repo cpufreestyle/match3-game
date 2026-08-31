@@ -1639,7 +1639,13 @@ class CandyGame {
 const AD_CONFIG = {
     provider: 'mock',           // 'mock' | 'real'
     enabled: false,             // 总开关：真实广告接入后改为 true 显示入口
-    real: {},                   // 真实SDK配置：拿到广告位ID后填入并切换 provider
+    real: {
+        // Google AdSense H5 Games Ads 官方协议（developers.google.com/admob/h5-games-ads）
+        // 申请通过后：1) 填入 gameId 和 placementId  2) provider 改 'real'  3) enabled 改 true
+        sdkUrl: 'https://googleads.g.doubleclick.net/tag/ads_h5_games.js',
+        gameId: '',                 // AdSense 后台的 Game ID
+        rewardedPlacementId: ''     // 激励视频 Placement ID
+    },
     dailyBonusStars: 20,
     dailyBonusLimit: 1,
     moveBoostAmount: 5,
@@ -1671,18 +1677,42 @@ class MockAdProvider {
 
 class RealAdProvider {
     constructor(config) { this.config = config.real; this.sdkReady = false; }
-    loadSdk() {
-        if (this.sdkReady || !this.config.sdkUrl) return;
+
+    loadSdk(onReady, onFail) {
+        if (this.sdkReady) { onReady(); return; }
+        if (!this.config.sdkUrl) { onFail(); return; }
+        if (window.h5gamesAds) { this.sdkReady = true; onReady(); return; }
         const s = document.createElement('script');
         s.src = this.config.sdkUrl;
         s.async = true;
-        s.onload = () => { this.sdkReady = true; };
+        s.onload = () => {
+            // Google H5 Games Ads 标准初始化协议
+            if (window.h5gamesAds && window.h5gamesAds.init) {
+                window.h5gamesAds.init(this.config.gameId)
+                    .then(() => { this.sdkReady = true; onReady(); })
+                    .catch(() => onFail());
+            } else {
+                this.sdkReady = true; onReady();
+            }
+        };
+        s.onerror = () => onFail();
         document.head.appendChild(s);
     }
+
     showRewardedAd(onReward, onFail) {
-        this.loadSdk();
-        // TODO: 按所选广告平台SDK文档实现播放流程，成功后调用 onReward()
-        onFail();
+        this.loadSdk(() => {
+            // 官方协议: h5gamesAds.showAd(placementId) 返回 Promise<{hasReward}>
+            if (window.h5gamesAds && window.h5gamesAds.showAd) {
+                window.h5gamesAds.showAd(this.config.rewardedPlacementId)
+                    .then(result => {
+                        if (result && result.hasReward) onReward();
+                        else onFail();
+                    })
+                    .catch(() => onFail());
+            } else {
+                onFail();
+            }
+        }, onFail);
     }
 }
 
