@@ -1638,6 +1638,7 @@ class CandyGame {
 // ============================================================
 const AD_CONFIG = {
     provider: 'mock',           // 'mock' | 'real'
+    enabled: false,             // 总开关：真实广告接入后改为 true 显示入口
     real: {},                   // 真实SDK配置：拿到广告位ID后填入并切换 provider
     dailyBonusStars: 20,
     dailyBonusLimit: 1,
@@ -1999,5 +2000,13 @@ document.getElementById('sound-btn').addEventListener('click', () => {
         dailyBtn.textContent = '✓ 今日最佳 ' + best;
         dailyBtn.disabled = true;
         dailyBtn.style.opacity = '0.5';
+    }
+
+    // 广告总开关：未接入真实广告时隐藏入口
+    if (!AD_CONFIG.enabled) {
+        var adMoveBtn = document.getElementById('item-ad-moves');
+        if (adMoveBtn) adMoveBtn.style.display = 'none';
+        var reviveBtn = document.getElementById('revive-ad-btn');
+        if (reviveBtn) reviveBtn.style.display = 'none';
     }
 })();
