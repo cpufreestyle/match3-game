@@ -1637,7 +1637,7 @@ class CandyGame {
 //  AD_CONFIG.provider 中切换即可，游戏逻辑无需改动。
 // ============================================================
 const AD_CONFIG = {
-    provider: 'mock',           // 'mock' | 'real'
+    provider: 'mock',           // 'mock' | 'gd' (GameDistribution推荐) | 'real' (Google)
     enabled: false,             // 总开关：真实广告接入后改为 true 显示入口
     real: {
         // Google AdSense H5 Games Ads 官方协议（developers.google.com/admob/h5-games-ads）
@@ -1645,6 +1645,13 @@ const AD_CONFIG = {
         sdkUrl: 'https://googleads.g.doubleclick.net/tag/ads_h5_games.js',
         gameId: '',                 // AdSense 后台的 Game ID
         rewardedPlacementId: ''     // 激励视频 Placement ID
+    },
+    gd: {
+        // GameDistribution（gamedistribution.com）：提交游戏通过审核后获得 gameId
+        // 零门槛：无需版号/资质，45%分成，Net30 PayPal/USDT 结算
+        // 接入：1) gamedistribution.com 注册开发者  2) 提交游戏过审  3) 填 gameId
+        //      4) provider 改 'gd'  5) enabled 改 true
+        gameId: ''
     },
     dailyBonusStars: 20,
     dailyBonusLimit: 1,
@@ -1716,8 +1723,96 @@ class RealAdProvider {
     }
 }
 
+// ============================================================
+//  GameDistribution Provider（推荐零门槛变现路径）
+//  提交游戏到 gamedistribution.com 后获得 gameId，填入 AD_CONFIG.gd.gameId
+//  协议: window.GD_OPTIONS 必须在 SDK script 之前定义
+//  激励广告: gdsdk.preloadAd('rewarded') + showAd('rewarded')
+//  奖励发放: SDK_REWARDED_WATCH_COMPLETE 事件
+// ============================================================
+class GameDistributionProvider {
+    constructor(config) {
+        this.config = config.gd;
+        this.sdkReady = false;
+        this._rewardGranted = false;
+        this._pendingReward = null;
+        this._pendingFail = null;
+    }
+
+    _initSdk(onReady, onFail) {
+        if (this.sdkReady) { onReady(); return; }
+        if (!this.config.gameId) { onFail(); return; }
+        if (window.gdsdk) { this.sdkReady = true; onReady(); return; }
+
+        const self = this;
+        // GD_OPTIONS 必须在 SDK 加载前定义
+        window.GD_OPTIONS = {
+            gameId: this.config.gameId,
+            onEvent(event) {
+                switch (event.name) {
+                    case 'SDK_READY':
+                        self.sdkReady = true;
+                        onReady();
+                        break;
+                    case 'SDK_GAME_PAUSE':
+                        // 广告开始
+                        break;
+                    case 'SDK_REWARDED_WATCH_COMPLETE':
+                        // 完整看完激励广告 → 标记发奖
+                        self._rewardGranted = true;
+                        break;
+                    case 'SDK_GAME_START':
+                        // 广告结束 → 恢复游戏并结算奖励
+                        if (self._pendingReward && self._rewardGranted) {
+                            self._pendingReward();
+                        } else if (self._pendingFail) {
+                            self._pendingFail();
+                        }
+                        self._rewardGranted = false;
+                        self._pendingReward = null;
+                        self._pendingFail = null;
+                        // 预加载下一次激励广告
+                        if (window.gdsdk && window.gdsdk.preloadAd) {
+                            try { window.gdsdk.preloadAd('rewarded'); } catch (e) {}
+                        }
+                        break;
+                    default:
+                        break;
+                }
+            }
+        };
+
+        const s = document.createElement('script');
+        s.src = 'https://html5.api.gamedistribution.com/main.min.js';
+        s.async = true;
+        s.onerror = () => onFail();
+        document.head.appendChild(s);
+        // SDK加载超时保护（15秒）
+        setTimeout(() => { if (!this.sdkReady) onFail(); }, 15000);
+    }
+
+    showRewardedAd(onReward, onFail) {
+        this._initSdk(() => {
+            if (!window.gdsdk || !window.gdsdk.showAd) { onFail(); return; }
+            this._pendingReward = onReward;
+            this._pendingFail = onFail;
+            this._rewardGranted = false;
+            // 先预加载激励广告（幂等）
+            try { if (window.gdsdk.preloadAd) window.gdsdk.preloadAd('rewarded'); } catch (e) {}
+            window.gdsdk.showAd('rewarded').catch(() => {
+                // 无法填充广告（网络/库存原因）
+                this._pendingReward = null;
+                this._pendingFail = null;
+                onFail();
+            });
+        }, onFail);
+    }
+}
+
 function getAdProvider() {
-    return AD_CONFIG.provider === 'real' ? new RealAdProvider(AD_CONFIG) : new MockAdProvider();
+    if (AD_CONFIG.provider === 'gd') return new GameDistributionProvider(AD_CONFIG);
+    if (AD_CONFIG.provider === 'real') return new RealAdProvider(AD_CONFIG);
+    return new MockAdProvider();
 }
 
 // ===== 音效系统 (Web Audio API) =====
