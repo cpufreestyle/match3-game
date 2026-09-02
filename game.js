@@ -53,11 +53,13 @@ class CandyGame {
         this.level = 1;
         this.moves = 30;
         this.targetScore = 1000;
+        this.objective = null; // 收集目标关：{ targets: {颜色: 数量}, collected: {颜色: 已收集} }
         this.state = GameState.IDLE;
         this.selectedCell = null;
         this.comboCount = 0;
         this.isProcessing = false;
         this.isPaused = false;
+        this.vibrationEnabled = safeGet('candyMatch_vibration', 'on') !== 'off';
 
         // 存档：最高分 / 最高关卡
         this.bestScore = parseInt(safeGet('candyMatch_bestScore', 0)) || 0;
@@ -73,12 +75,22 @@ class CandyGame {
         // 道具系统
         this.stars = parseInt(safeGet('candyMatch_stars', 0)) || 0;
 
+        // 统计系统
+        const loadedStats = safeGetJSON('candyMatch_stats', null) || {};
+        this.stats = { games: 0, cleared: 0, bestCombo: 0, seconds: 0, ...loadedStats };
+
         // 每日挑战
         this.gameMode = 'classic'; // 'classic' | 'daily'
         this.dailyTimer = null;
         this.dailyTimeLeft = 30;
         this.dailyStartTime = 0;
         this.gameEpoch = 0; // 异步竞态保护：restart/nextLevel 递增
+
+        // 闲置提示 / 缩放重排
+        this.HINT_DELAY = 8000;
+        this.lastActionTime = Date.now();
+        this.hintCells = null;
+        this._rerenderPending = false;
 
         this.boardEl = document.getElementById('board');
         this.particlesEl = document.getElementById('particles');
@@ -98,8 +110,24 @@ class CandyGame {
         this.bindEvents();
         this.updateHUD();
 
+        let resizeTimer = null;
         window.addEventListener('resize', () => {
-            this.calculateCellSize();
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                this.calculateCellSize();
+                // 动画进行中时推迟重建，避免糖果元素与动画错乱
+                if (this.isProcessing) this._rerenderPending = true;
+            }, 150);
+        });
+
+        // 闲置提示轮询
+        this.hintInterval = setInterval(() => this.checkIdleHint(), 1000);
+        // 游戏时长统计（仅活跃时累计）
+        this.playTimeInterval = setInterval(() => this.tickPlayTime(), 1000);
+        // 关闭/切后台前自动存档
+        window.addEventListener('pagehide', () => this.saveGame());
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) this.saveGame();
         });
     }
 
@@ -186,6 +214,7 @@ class CandyGame {
 
         // 鼠标/触摸开始 - 仅记录起始位置，不选择
         const onPointerDown = (e) => {
+            this.noteActivity();
             if (this.state !== GameState.IDLE || this.isProcessing || this.isPaused) return;
             const cell = this.getCellFromEvent(e);
             if (!cell) return;
@@ -280,8 +309,9 @@ class CandyGame {
 
         // 键盘支持（桌面端）
         document.addEventListener('keydown', (e) => {
+            this.noteActivity();
             if (!this.selectedCell) {
-                if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', ' '].includes(e.key)) {
                     this.selectCell(4, 4);
                     e.preventDefault();
                 }
@@ -293,7 +323,12 @@ class CandyGame {
             else if (e.key === 'ArrowDown') nr = Math.min(BOARD_SIZE - 1, row + 1);
             else if (e.key === 'ArrowLeft') nc = Math.max(0, col - 1);
             else if (e.key === 'ArrowRight') nc = Math.min(BOARD_SIZE - 1, col + 1);
-            else if (e.key === 'Enter' || e.key === ' ') return;
+            else if (e.key === 'Enter' || e.key === ' ') {
+                // 确认/取消选择
+                this.deselectCell();
+                e.preventDefault();
+                return;
+            }
             else return;
             e.preventDefault();
             const dr = Math.abs(nr - row), dc = Math.abs(nc - col);
@@ -367,7 +402,7 @@ class CandyGame {
 
         // 执行交换动画
         this.audio.play('swap');
-        if (navigator.vibrate) navigator.vibrate(10);
+        if (this.vibrationEnabled && navigator.vibrate) navigator.vibrate(10);
         await this.animateSwap(candy1, candy2);
 
         // 交换数据
@@ -393,10 +428,6 @@ class CandyGame {
             this.comboCount = 0;
             await this.processMatches();
             this.checkGameState();
-            this.isProcessing = false;
-            if (this.state !== GameState.GAME_OVER) {
-                this.state = GameState.IDLE;
-            }
             return;
         }
 
@@ -460,9 +491,15 @@ class CandyGame {
 
         } finally {
             this.isProcessing = false;
+            this.noteActivity();
+            if (this._rerenderPending && this.state !== GameState.GAME_OVER) {
+                this._rerenderPending = false;
+                this.renderBoard();
+            }
             if (this.state !== GameState.GAME_OVER) {
                 this.state = GameState.IDLE;
             }
+            this.saveGame();
         }
     }
 
@@ -592,7 +629,7 @@ class CandyGame {
             }
 
             this.audio.play('match');
-            if (navigator.vibrate) navigator.vibrate(15);
+            if (this.vibrationEnabled && navigator.vibrate) navigator.vibrate(15);
             await this.removeCandies(allToRemove);
             if (epoch !== this.gameEpoch) return;
 
@@ -688,8 +725,9 @@ class CandyGame {
                             if (r === hm.row) {
                                 const key = `${r},${c}`;
                                 if (!usedPositions.has(key) && hm.length >= 3 && vm.length >= 3) {
-                                    // L形 - 创建包装糖果
-                                    specials.push({ row: r, col: c, special: 'wrapped', type: hm.type, key });
+                                    // L/T形 - 长臂≥4生成十字糖，否则生成包装糖
+                                    const special = (hm.length >= 4 || vm.length >= 4) ? 'cross' : 'wrapped';
+                                    specials.push({ row: r, col: c, special, type: hm.type, key });
                                     usedPositions.add(key);
                                 }
                             }
@@ -720,6 +758,14 @@ class CandyGame {
                 for (let rr = 0; rr < BOARD_SIZE; rr++) {
                     additional.add(`${rr},${c}`);
                 }
+            } else if (candy.special === 'cross') {
+                // 十字糖：整行+整列
+                for (let cc = 0; cc < BOARD_SIZE; cc++) {
+                    additional.add(`${r},${cc}`);
+                }
+                for (let rr = 0; rr < BOARD_SIZE; rr++) {
+                    additional.add(`${rr},${c}`);
+                }
             } else if (candy.special === 'wrapped') {
                 // 3x3爆炸
                 for (let dr = -1; dr <= 1; dr++) {
@@ -743,6 +789,7 @@ class CandyGame {
         const s1 = candy1.special;
         const s2 = candy2.special;
         const isStriped = s => s === 'striped-h' || s === 'striped-v';
+        const isWrappedLike = s => s === 'wrapped' || s === 'cross';
 
         // 彩色炸弹 + 彩色炸弹 = 全屏大爆炸
         if (s1 === 'color-bomb' && s2 === 'color-bomb') {
@@ -755,23 +802,23 @@ class CandyGame {
         if (s2 === 'color-bomb' && isStriped(s1)) {
             return { type: 'bomb-striped', targetType: candy1.type, stripedDir: s1 };
         }
-        // 彩色炸弹 + 包装糖 = 全部同色变包装后引爆
-        if (s1 === 'color-bomb' && s2 === 'wrapped') {
+        // 彩色炸弹 + 包装糖/十字糖 = 全部同色变包装后引爆
+        if (s1 === 'color-bomb' && isWrappedLike(s2)) {
             return { type: 'bomb-wrapped', targetType: candy2.type };
         }
-        if (s2 === 'color-bomb' && s1 === 'wrapped') {
+        if (s2 === 'color-bomb' && isWrappedLike(s1)) {
             return { type: 'bomb-wrapped', targetType: candy1.type };
         }
         // 条纹 + 条纹 = 十字连爆（整行+整列）
         if (isStriped(s1) && isStriped(s2)) {
             return { type: 'double-striped', row: r1, col: c1, row2: r2, col2: c2 };
         }
-        // 条纹 + 包装糖 = 3行3列大十字
-        if ((isStriped(s1) && s2 === 'wrapped') || (s1 === 'wrapped' && isStriped(s2))) {
+        // 条纹 + 包装糖/十字糖 = 3行3列大十字
+        if ((isStriped(s1) && isWrappedLike(s2)) || (isWrappedLike(s1) && isStriped(s2))) {
             return { type: 'striped-wrapped', row: r1, col: c1, row2: r2, col2: c2 };
         }
-        // 包装糖 + 包装糖 = 5x5大爆炸
-        if (s1 === 'wrapped' && s2 === 'wrapped') {
+        // 包装糖/十字糖 + 包装糖/十字糖 = 5x5大爆炸
+        if (isWrappedLike(s1) && isWrappedLike(s2)) {
             return { type: 'double-wrapped', row: r1, col: c1, row2: r2, col2: c2 };
         }
 
@@ -960,6 +1007,10 @@ class CandyGame {
             if (!candy) continue;
 
             positions.push({ r, c, color: candy.color });
+            // 收集目标关：累计已收集数量
+            if (this.objective && this.objective.collected[candy.color] !== undefined) {
+                this.objective.collected[candy.color]++;
+            }
 
             if (candy.el) {
                 candy.el.classList.add('removing');
@@ -968,6 +1019,9 @@ class CandyGame {
             }
             this.board[r][c] = null;
         }
+
+        // 统计累计消除
+        this.stats.cleared += positions.length;
 
         // 显示分数飘字
         if (positions.length > 0) {
@@ -1128,6 +1182,7 @@ class CandyGame {
     // ===== Combo提示 =====
     showCombo(count) {
         this.maxCombo = Math.max(this.maxCombo, count);
+        if (count > this.stats.bestCombo) this.stats.bestCombo = count;
         this.checkAchievements();
         const texts = ['', '', 'NICE!', 'GREAT!', 'AMAZING!', 'AWESOME!', 'INCREDIBLE!', 'UNBELIEVABLE!'];
         const text = texts[Math.min(count, texts.length - 1)] || `${count}x COMBO!`;
@@ -1169,6 +1224,8 @@ class CandyGame {
         if (this.state === GameState.GAME_OVER) return;
         this.isPaused = true;
         this.deselectCell();
+        this.noteActivity();
+        this.saveGame();
         // 暂停每日挑战计时器
         if (this.dailyTimer) {
             clearInterval(this.dailyTimer);
@@ -1176,6 +1233,8 @@ class CandyGame {
             this._dailyPaused = true;
         }
         document.getElementById('pause-screen').classList.remove('hidden');
+        // 挂起音频（暂停背景音乐与音效）
+        if (this.audio.ctx && this.audio.ctx.state === 'running') this.audio.ctx.suspend();
     }
 
     resume() {
@@ -1185,7 +1244,7 @@ class CandyGame {
             this._dailyPaused = false;
             this.dailyTimer = setInterval(() => {
                 this.dailyTimeLeft--;
-                this.updateDailyTimer();
+                this.updateHUD();
                 if (this.dailyTimeLeft <= 0) {
                     clearInterval(this.dailyTimer);
                     this.dailyTimer = null;
@@ -1194,13 +1253,8 @@ class CandyGame {
             }, 1000);
         }
         document.getElementById('pause-screen').classList.add('hidden');
-    }
-
-    // ===== 音效开关 =====
-    toggleSound() {
-        this.audio.enabled = !this.audio.enabled;
-        safeSet('candyMatch_sound', this.audio.enabled ? 'on' : 'off');
-        document.getElementById('sound-icon').textContent = this.audio.enabled ? '🔊' : '🔇';
+        if (this.audio.ctx && this.audio.ctx.state === 'suspended') this.audio.ctx.resume();
+        this.noteActivity();
     }
 
     // ===== 存档 =====
@@ -1224,6 +1278,146 @@ class CandyGame {
         }
     }
 
+    // ===== 中途存档续玩 =====
+    saveGame() {
+        this.saveStats();
+        if (this.gameMode !== 'classic' || this.state === GameState.GAME_OVER) return;
+        const cells = [];
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const candy = this.board[r][c];
+                cells.push(candy ? { t: candy.type, s: candy.special || null } : null);
+            }
+        }
+        const data = {
+            v: 1,
+            cells,
+            score: this.score,
+            level: this.level,
+            moves: this.moves,
+            targetScore: this.targetScore,
+            objective: this.objective ? { targets: this.objective.targets, collected: this.objective.collected } : null
+        };
+        safeSet('candyMatch_save', JSON.stringify(data));
+    }
+
+    clearSave() {
+        try { localStorage.removeItem('candyMatch_save'); } catch (e) { /* 隐私模式 */ }
+    }
+
+    static hasSave() {
+        const data = safeGetJSON('candyMatch_save', null);
+        return !!(data && data.v === 1 && Array.isArray(data.cells) && data.cells.length === BOARD_SIZE * BOARD_SIZE);
+    }
+
+    restoreFromSave(data) {
+        this.gameEpoch++;
+        if (this.dailyTimer) { clearInterval(this.dailyTimer); this.dailyTimer = null; }
+        this._dailyPaused = false;
+        this.gameMode = 'classic';
+        this.board = [];
+        let i = 0;
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            this.board[r] = [];
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const cell = data.cells[i++];
+                this.board[r][c] = cell ? {
+                    type: cell.t,
+                    color: CANDY_COLORS[cell.t] || 'red',
+                    special: cell.s || null,
+                    row: r,
+                    col: c,
+                    el: null
+                } : null;
+            }
+        }
+        this.score = data.score || 0;
+        this.level = data.level || 1;
+        this.moves = data.moves || 30;
+        this.targetScore = data.targetScore || 1000;
+        this.objective = data.objective ? { targets: data.objective.targets, collected: data.objective.collected } : null;
+        this.comboCount = 0;
+        this.maxCombo = 0;
+        this.adMoveBoostsUsed = 0;
+        this.reviveUsed = false;
+        document.getElementById('revive-ad-btn').style.display = '';
+        document.getElementById('game-over').classList.add('hidden');
+        document.getElementById('level-complete').classList.add('hidden');
+        document.querySelector('#level-complete h1').textContent = '🎉 通关！';
+        this.selectedCell = null;
+        this.renderBoard();
+        this.updateHUD();
+        this.state = GameState.IDLE;
+        this.noteActivity();
+    }
+
+    // ===== 统计系统 =====
+    saveStats() {
+        safeSet('candyMatch_stats', JSON.stringify(this.stats));
+    }
+
+    recordGameStart() {
+        this.stats.games++;
+        this.saveStats();
+    }
+
+    tickPlayTime() {
+        if (this.isPaused || this.state === GameState.GAME_OVER || document.hidden) return;
+        if (document.querySelector('.overlay:not(.hidden)')) return;
+        this.stats.seconds++;
+        if (this.stats.seconds % 15 === 0) this.saveStats();
+    }
+
+    // ===== 闲置提示 =====
+    checkIdleHint() {
+        if (this.isProcessing || this.isPaused || this.state !== GameState.IDLE) return;
+        if (this.hintCells) return;
+        if (document.querySelector('.overlay:not(.hidden)')) return;
+        if (Date.now() - this.lastActionTime < this.HINT_DELAY) return;
+        const move = this.findValidMove();
+        if (move && move.candy1.el && move.candy2.el) {
+            this.hintCells = [move.candy1.el, move.candy2.el];
+            this.hintCells.forEach(el => el.classList.add('hint'));
+        }
+    }
+
+    findValidMove() {
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const candy = this.board[r][c];
+                if (!candy) continue;
+                for (const [dr, dc] of [[0, 1], [1, 0]]) {
+                    const nr = r + dr, nc = c + dc;
+                    if (nr >= BOARD_SIZE || nc >= BOARD_SIZE || !this.board[nr][nc]) continue;
+                    // 彩色炸弹/双特殊糖果任意相邻交换都有效
+                    if (candy.special === 'color-bomb' || this.board[nr][nc].special === 'color-bomb') {
+                        return { candy1: candy, candy2: this.board[nr][nc] };
+                    }
+                    if (candy.special && this.board[nr][nc].special) {
+                        return { candy1: candy, candy2: this.board[nr][nc] };
+                    }
+                    this.swapData(r, c, nr, nc);
+                    const ok = this.findAllMatches().length > 0;
+                    this.swapData(r, c, nr, nc);
+                    if (ok) return { candy1: candy, candy2: this.board[nr][nc] };
+                }
+            }
+        }
+        return null;
+    }
+
+    noteActivity() {
+        this.lastActionTime = Date.now();
+        this.clearHint();
+    }
+
+    clearHint() {
+        if (this.hintCells) {
+            this.hintCells.forEach(el => { if (el) el.classList.remove('hint'); });
+            this.hintCells = null;
+        }
+    }
+
     // ===== 游戏状态检查 =====
     checkGameState() {
         if (this.state === GameState.GAME_OVER) return;
@@ -1232,16 +1426,63 @@ class CandyGame {
             if (!this.hasValidMoves()) this.shuffleBoard();
             return;
         }
-        if (this.score >= this.targetScore) {
+        if (this.objective) {
+            // 收集目标关
+            if (this.objectiveMet()) {
+                this.levelComplete();
+            } else if (this.moves <= 0) {
+                this.gameOver();
+            }
+        } else if (this.score >= this.targetScore) {
             this.levelComplete();
         } else if (this.moves <= 0) {
             this.gameOver();
         }
 
         // 检查是否有可移动的步骤
-        if (!this.hasValidMoves()) {
+        if (this.state !== GameState.GAME_OVER && !this.hasValidMoves()) {
             this.shuffleBoard();
         }
+    }
+
+    // ===== 收集目标关卡 =====
+    setupLevelObjective(level) {
+        // 第3、5、7…关为收集目标关，其余为分数关
+        if (level >= 3 && level % 2 === 1) {
+            const tier = Math.floor((level - 3) / 2);
+            const colorCount = Math.min(2 + Math.floor(tier / 3), 4);
+            const perColor = 25 + tier * 10;
+            const targets = {};
+            const collected = {};
+            const used = new Set();
+            for (let i = 0; used.size < colorCount; i++) {
+                used.add((level * 2 + i) % CANDY_TYPES);
+            }
+            for (const ci of used) {
+                targets[CANDY_COLORS[ci]] = perColor;
+                collected[CANDY_COLORS[ci]] = 0;
+            }
+            this.objective = { targets, collected };
+        } else {
+            this.objective = null;
+        }
+    }
+
+    objectiveMet() {
+        if (!this.objective) return true;
+        return Object.keys(this.objective.targets).every(
+            color => this.objective.collected[color] >= this.objective.targets[color]
+        );
+    }
+
+    objectiveTotalNeeded() {
+        if (!this.objective) return 0;
+        return Object.values(this.objective.targets).reduce((s, n) => s + n, 0);
+    }
+
+    objectiveTotalCollected() {
+        if (!this.objective) return 0;
+        return Object.values(this.objective.collected).reduce((s, n) => s + n, 0);
     }
 
     hasValidMoves() {
@@ -1314,6 +1555,7 @@ class CandyGame {
 
     // ===== 关卡完成 =====
     levelComplete() {
+        this.clearSave();
         const bonus = this.moves * 50;
         const starsEarned = this.level * 5;
         this.score += bonus;
@@ -1332,6 +1574,7 @@ class CandyGame {
 
     // ===== 游戏结束 =====
     gameOver() {
+        this.clearSave();
         this.saveBestRecord();
         this.checkAchievements();
         document.getElementById('game-over-score').textContent = this.score;
@@ -1355,6 +1598,7 @@ class CandyGame {
         this.moves = 999;
         this.comboCount = 0;
         this.maxCombo = 0;
+        this.objective = null;
         this.dailyTimeLeft = 30;
         document.getElementById('start-screen').classList.add('hidden');
         if (!game) {
@@ -1365,6 +1609,7 @@ class CandyGame {
         this.renderBoard();
         this.updateHUD();
         this.state = GameState.IDLE;
+        this.recordGameStart();
 
         this.updateHUD();
         if (this.dailyTimer) clearInterval(this.dailyTimer);
@@ -1407,15 +1652,23 @@ class CandyGame {
         this.targetScore = 1000 + (this.level - 1) * 600;
         this.moves = 30 + Math.min((this.level - 1) * 2, 12);
         this.comboCount = 0;
+        this.maxCombo = 0;
+        this.setupLevelObjective(this.level);
         this.adMoveBoostsUsed = 0;
         this.reviveUsed = false;
         document.getElementById('revive-ad-btn').style.display = '';
         document.getElementById('level-complete').classList.add('hidden');
+        // 恢复通关标题（每日挑战结束会改写此标题）
+        document.querySelector('#level-complete h1').textContent = '🎉 通关！';
         this.generateBoard();
         this.renderBoard();
         this.updateHUD();
         this.state = GameState.IDLE;
         this.showLevelBanner(this.level);
+        if (this.objective) {
+            this.showToast('🎯 本关目标：收集指定糖果！', '🎯');
+        }
+        this.saveGame();
     }
 
     showLevelBanner(level) {
@@ -1440,12 +1693,18 @@ class CandyGame {
         this.targetScore = 1000;
         this.moves = 30;
         this.comboCount = 0;
+        this.maxCombo = 0;
+        this.setupLevelObjective(1);
         document.getElementById('game-over').classList.add('hidden');
         document.getElementById('level-complete').classList.add('hidden');
+        // 恢复通关标题（每日挑战结束会改写此标题）
+        document.querySelector('#level-complete h1').textContent = '🎉 通关！';
+        this.clearSave();
         this.generateBoard();
         this.renderBoard();
         this.updateHUD();
         this.state = GameState.IDLE;
+        this.recordGameStart();
     }
 
     // ===== HUD更新 =====
@@ -1481,9 +1740,19 @@ class CandyGame {
                 movesEl.style.color = '#fff';
             }
             levelEl.textContent = this.level;
-            const progress = Math.min(100, (this.score / this.targetScore) * 100);
-            document.getElementById('progress-bar').style.width = progress + '%';
-            document.getElementById('progress-text').textContent = `${this.score} / ${this.targetScore}`;
+            let progress, text;
+            if (this.objective) {
+                const emojis = { red: '🔴', blue: '🔵', green: '🟢', yellow: '🟡', purple: '🟣', orange: '🟠' };
+                text = Object.keys(this.objective.targets).map(color =>
+                    `${emojis[color] || '🎯'} ${this.objective.collected[color]}/${this.objective.targets[color]}`
+                ).join('  ');
+                progress = 100 * this.objectiveTotalCollected() / this.objectiveTotalNeeded();
+            } else {
+                text = `${this.score} / ${this.targetScore}`;
+                progress = Math.min(100, (this.score / this.targetScore) * 100);
+            }
+            document.getElementById('progress-bar').style.width = Math.min(100, progress) + '%';
+            document.getElementById('progress-text').textContent = text;
         }
 
         // 星星货币
@@ -1608,6 +1877,8 @@ class CandyGame {
         this.checkGameState();
         this.isProcessing = false;
         this.state = GameState.IDLE;
+        this.noteActivity();
+        this.saveGame();
     }
 
     showToast(msg, icon = '道具', duration = 2000) {
@@ -1637,8 +1908,8 @@ class CandyGame {
 //  AD_CONFIG.provider 中切换即可，游戏逻辑无需改动。
 // ============================================================
 const AD_CONFIG = {
-    provider: 'mock',           // 'mock' | 'gd' (GameDistribution推荐) | 'real' (Google)
-    enabled: false,             // 总开关：真实广告接入后改为 true 显示入口
+    provider: 'gd',             // 'mock' | 'gd' (GameDistribution推荐) | 'real' (Google)
+    enabled: true,              // 总开关：真实广告接入后改为 true 显示入口
     real: {
         // Google AdSense H5 Games Ads 官方协议（developers.google.com/admob/h5-games-ads）
         // 申请通过后：1) 填入 gameId 和 placementId  2) provider 改 'real'  3) enabled 改 true
@@ -1651,7 +1922,7 @@ const AD_CONFIG = {
         // 零门槛：无需版号/资质，45%分成，Net30 PayPal/USDT 结算
         // 接入：1) gamedistribution.com 注册开发者  2) 提交游戏过审  3) 填 gameId
         //      4) provider 改 'gd'  5) enabled 改 true
-        gameId: ''
+        gameId: '403d34ba8e3a4e178c7049699a770f7d'
     },
     dailyBonusStars: 20,
     dailyBonusLimit: 1,
@@ -1820,11 +2091,56 @@ class GameAudio {
     constructor() {
         this.ctx = null;
         this.enabled = safeGet('candyMatch_sound', 'on') !== 'off';
+        this.musicEnabled = safeGet('candyMatch_music', 'on') !== 'off';
+        this.bgmTimer = null;
+        this.bgmStep = 0;
     }
 
     init() {
         if (!this.ctx) {
             this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    }
+
+    // ===== 背景音乐（Web Audio 生成柔和循环琶音） =====
+    startBgm() {
+        if (!this.musicEnabled || this.bgmTimer) return;
+        this.init();
+        if (!this.ctx) return;
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+        const scale = [261.6, 293.7, 329.6, 392.0, 440.0, 523.3, 587.3, 659.3]; // C大调五声扩展
+        const pattern = [0, 2, 4, 7, 4, 2, 5, 2];
+        this.bgmStep = 0;
+        this.bgmTimer = setInterval(() => {
+            if (!this.ctx || this.ctx.state !== 'running') return;
+            const now = this.ctx.currentTime;
+            const idx = pattern[this.bgmStep % pattern.length];
+            const freq = scale[idx] / 2; // 低八度，更柔和
+            this._bgmNote(freq, now, 0.9, 0.045, 'triangle');
+            if (this.bgmStep % 8 === 0) this._bgmNote(freq / 2, now, 1.6, 0.05, 'sine');
+            if (this.bgmStep % 4 === 2) this._bgmNote(scale[(idx + 2) % scale.length], now + 0.15, 0.5, 0.03, 'sine');
+            this.bgmStep++;
+        }, 420);
+    }
+
+    _bgmNote(freq, when, dur, vol, type) {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, when);
+        gain.gain.setValueAtTime(0, when);
+        gain.gain.linearRampToValueAtTime(vol, when + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, when + dur);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(when);
+        osc.stop(when + dur + 0.05);
+    }
+
+    stopBgm() {
+        if (this.bgmTimer) {
+            clearInterval(this.bgmTimer);
+            this.bgmTimer = null;
         }
     }
 
@@ -1971,13 +2287,38 @@ class GameAudio {
 // ===== 启动游戏 =====
 var game;
 
+// 用户手势后启动背景音乐（浏览器自动播放策略要求）
+function startBgmOnGesture() {
+    if (game && game.audio.musicEnabled) game.audio.startBgm();
+}
+
+// 音效开关（HUD按钮与设置面板共用）
+function setSoundEnabled(on) {
+    safeSet('candyMatch_sound', on ? 'on' : 'off');
+    document.getElementById('sound-icon').textContent = on ? '🔊' : '🔇';
+    if (game) game.audio.enabled = on;
+}
+
 document.getElementById('start-btn').addEventListener('click', () => {
     document.getElementById('start-screen').classList.add('hidden');
     if (!game) {
         game = new CandyGame();
+        game.recordGameStart();
     } else {
         game.showBestRecord();
     }
+    startBgmOnGesture();
+});
+
+// 继续游戏（恢复中途存档）
+document.getElementById('continue-btn').addEventListener('click', () => {
+    const data = safeGetJSON('candyMatch_save', null);
+    if (!data) return;
+    document.getElementById('start-screen').classList.add('hidden');
+    if (!game) game = new CandyGame();
+    game.restoreFromSave(data);
+    game.showToast('已恢复上局进度', '▶');
+    startBgmOnGesture();
 });
 
 document.getElementById('next-level-btn').addEventListener('click', () => {
@@ -2020,6 +2361,8 @@ document.getElementById('daily-btn').addEventListener('click', () => {
     if (!game) { game = new CandyGame(); }
 
     game.startDailyChallenge();
+
+    startBgmOnGesture();
 
 });
 
@@ -2085,15 +2428,87 @@ document.getElementById('revive-ad-btn').addEventListener('click', () => { if (g
 
 // 音效开关
 document.getElementById('sound-btn').addEventListener('click', () => {
+    var on = safeGet('candyMatch_sound', 'on') !== 'off';
+    setSoundEnabled(!on);
+});
+
+// ===== 统计面板 =====
+document.getElementById('stats-btn').addEventListener('click', () => {
+    const stats = game ? game.stats : (safeGetJSON('candyMatch_stats', null) || {});
+    const games = stats.games || 0;
+    const cleared = stats.cleared || 0;
+    const bestCombo = stats.bestCombo || 0;
+    const specials = parseInt(safeGet('candyMatch_totalSpecials', 0)) || 0;
+    const bestScore = parseInt(safeGet('candyMatch_bestScore', 0)) || 0;
+    const sec = stats.seconds || 0;
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    const timeText = h > 0 ? `${h}时${m}分` : (m > 0 ? `${m}分${s}秒` : `${s}秒`);
+    document.getElementById('stat-games').textContent = games;
+    document.getElementById('stat-cleared').textContent = cleared;
+    document.getElementById('stat-bestcombo').textContent = bestCombo;
+    document.getElementById('stat-specials').textContent = specials;
+    document.getElementById('stat-time').textContent = timeText;
+    document.getElementById('stat-best-score').textContent = bestScore;
+    document.getElementById('stats-panel').classList.remove('hidden');
+});
+
+document.getElementById('stats-close-btn').addEventListener('click', () => {
+    document.getElementById('stats-panel').classList.add('hidden');
+});
+
+// ===== 设置面板 =====
+function syncSettingsUI() {
+    var musicOn = safeGet('candyMatch_music', 'on') !== 'off';
+    var soundOn = safeGet('candyMatch_sound', 'on') !== 'off';
+    var vibOn = safeGet('candyMatch_vibration', 'on') !== 'off';
+    var musicBtn = document.getElementById('music-toggle');
+    var soundBtn = document.getElementById('sound-toggle');
+    var vibBtn = document.getElementById('vibration-toggle');
+    musicBtn.textContent = '🎵 背景音乐：' + (musicOn ? '开' : '关');
+    musicBtn.classList.toggle('off', !musicOn);
+    soundBtn.textContent = '🔊 音效：' + (soundOn ? '开' : '关');
+    soundBtn.classList.toggle('off', !soundOn);
+    vibBtn.textContent = '📳 震动：' + (vibOn ? '开' : '关');
+    vibBtn.classList.toggle('off', !vibOn);
+}
+
+function openSettings() {
+    syncSettingsUI();
+    document.getElementById('settings-panel').classList.remove('hidden');
+}
+
+document.getElementById('settings-btn').addEventListener('click', openSettings);
+document.getElementById('settings-pause-btn').addEventListener('click', openSettings);
+
+document.getElementById('settings-close-btn').addEventListener('click', () => {
+    document.getElementById('settings-panel').classList.add('hidden');
+});
+
+document.getElementById('music-toggle').addEventListener('click', () => {
+    var on = safeGet('candyMatch_music', 'on') !== 'off';
+    safeSet('candyMatch_music', on ? 'off' : 'on');
     if (game) {
-        game.toggleSound();
-    } else {
-        // 游戏未开始时也能切换
-        var icon = document.getElementById('sound-icon');
-        var enabled = icon.textContent === '🔊';
-        icon.textContent = enabled ? '🔇' : '🔊';
-        safeSet('candyMatch_sound', enabled ? 'off' : 'on');
+        game.audio.musicEnabled = !on;
+        if (!on) {
+            game.audio.startBgm();
+        } else {
+            game.audio.stopBgm();
+        }
     }
+    syncSettingsUI();
+});
+
+document.getElementById('sound-toggle').addEventListener('click', () => {
+    var on = safeGet('candyMatch_sound', 'on') !== 'off';
+    setSoundEnabled(!on);
+    syncSettingsUI();
+});
+
+document.getElementById('vibration-toggle').addEventListener('click', () => {
+    var on = safeGet('candyMatch_vibration', 'on') !== 'off';
+    safeSet('candyMatch_vibration', on ? 'off' : 'on');
+    if (game) game.vibrationEnabled = !on;
+    syncSettingsUI();
 });
 
 // 页面加载时恢复音效设置
@@ -2125,6 +2540,17 @@ document.getElementById('sound-btn').addEventListener('click', () => {
         dailyBtn.textContent = '✓ 今日最佳 ' + best;
         dailyBtn.disabled = true;
         dailyBtn.style.opacity = '0.5';
+    }
+
+    // 中途存档：显示继续按钮
+    if (CandyGame.hasSave()) {
+        var contBtn = document.getElementById('continue-btn');
+        if (contBtn) contBtn.classList.remove('hidden');
+    }
+
+    // PWA Service Worker（仅 http/https 环境注册）
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+        navigator.serviceWorker.register('sw.js').catch(function() {});
     }
 
     // 广告总开关：未接入真实广告时隐藏入口
