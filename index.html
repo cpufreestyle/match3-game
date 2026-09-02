@@ -17,6 +17,9 @@
     <meta name="apple-mobile-web-app-title" content="糖果消消乐">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="format-detection" content="telephone=no">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="icon" type="image/png" href="icon-192.png">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -51,8 +54,10 @@
                     <p>🎯 交换相邻糖果，匹配3个或以上</p>
                     <p>⭐ 4连消获得条纹糖果</p>
                     <p>💥 5连消获得彩色炸弹</p>
+                    <p>✚ L/T形长臂消除获得十字糖</p>
                     <p>🔗 连锁消除获得额外分数</p>
                     <p>🎨 特殊糖果组合触发大爆炸！</p>
+                    <p>🗺️ 部分关卡需收集指定颜色糖果</p>
                 </div>
                 <div id="best-record" class="best-record hidden">
                     <p>🏆 最高分：<span id="best-score-val">0</span></p>
@@ -63,7 +68,12 @@
                     <button id="daily-btn" class="game-btn btn-secondary">⏱ 每日挑战</button>
                 </div>
                 <div class="start-extra-btns">
-                    <button id="achievements-btn" class="text-btn">🏆 成就</button>
+                    <button id="continue-btn" class="continue-btn hidden">▶ 继续游戏</button>
+                    <div class="text-btn-row">
+                        <button id="achievements-btn" class="text-btn">🏆 成就</button>
+                        <button id="stats-btn" class="text-btn">📊 统计</button>
+                        <button id="settings-btn" class="text-btn">⚙ 设置</button>
+                    </div>
                 </div>
                 <div class="compliance-info">
                     <p class="age-rating">适龄提示：4+</p>
@@ -78,7 +88,8 @@
             <div class="overlay-content">
                 <h1>⏸ 已暂停</h1>
                 <button id="resume-btn" class="game-btn">继续游戏</button>
-                <button id="restart-from-pause-btn" class="game-btn btn-secondary">重新开始</button>
+                <button id="settings-pause-btn" class="game-btn btn-secondary">⚙ 设置</button>
+                <button id="restart-from-pause-btn" class="game-btn btn-text">重新开始</button>
                 <button id="back-to-menu-btn" class="game-btn btn-text">返回主菜单</button>
             </div>
         </div>
@@ -102,6 +113,7 @@
                 <p>到达关卡：<span id="game-over-level">1</span></p>
                 <button id="revive-ad-btn" class="game-btn btn-ad">📺 看广告复活（+10步）</button>
                 <button id="restart-btn" class="game-btn">重新开始</button>
+                <button id="back-to-menu-btn2" class="game-btn btn-text">返回主菜单</button>
             </div>
         </div>
 
@@ -111,6 +123,35 @@
                 <h1>🏆 成就</h1>
                 <div id="ach-list"></div>
                 <button id="ach-close-btn" class="game-btn">关闭</button>
+            </div>
+        </div>
+
+        <!-- 统计面板 -->
+        <div id="stats-panel" class="overlay hidden">
+            <div class="overlay-content ach-content">
+                <h1>📊 游戏统计</h1>
+                <div class="stat-grid">
+                    <div class="stat-row"><span class="stat-label">总局数</span><span id="stat-games" class="stat-value">0</span></div>
+                    <div class="stat-row"><span class="stat-label">累计消除</span><span id="stat-cleared" class="stat-value">0</span></div>
+                    <div class="stat-row"><span class="stat-label">最高连击</span><span id="stat-bestcombo" class="stat-value">0</span></div>
+                    <div class="stat-row"><span class="stat-label">特殊糖果</span><span id="stat-specials" class="stat-value">0</span></div>
+                    <div class="stat-row"><span class="stat-label">历史最高分</span><span id="stat-best-score" class="stat-value">0</span></div>
+                    <div class="stat-row"><span class="stat-label">累计时长</span><span id="stat-time" class="stat-value">0秒</span></div>
+                </div>
+                <button id="stats-close-btn" class="game-btn">关闭</button>
+            </div>
+        </div>
+
+        <!-- 设置面板 -->
+        <div id="settings-panel" class="overlay hidden">
+            <div class="overlay-content ach-content">
+                <h1>⚙ 设置</h1>
+                <div class="settings-list">
+                    <button id="music-toggle" class="settings-toggle">🎵 背景音乐：开</button>
+                    <button id="sound-toggle" class="settings-toggle">🔊 音效：开</button>
+                    <button id="vibration-toggle" class="settings-toggle">📳 震动：开</button>
+                </div>
+                <button id="settings-close-btn" class="game-btn">关闭</button>
             </div>
         </div>
     </div>

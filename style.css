@@ -7,6 +7,11 @@
     user-select: none;
 }
 
+/* ===== 通用隐藏 ===== */
+.hidden {
+    display: none !important;
+}
+
 html, body {
     width: 100%;
     min-height: 100vh;
@@ -321,6 +326,51 @@ html, body {
 @keyframes wrappedRing {
     0%, 100% { opacity: 0.3; transform: scale(1); }
     50% { opacity: 0.8; transform: scale(1.1); }
+}
+
+/* ===== 特殊糖果 - 十字糖 ===== */
+.candy.cross {
+    box-shadow: 0 0 18px rgba(255, 255, 255, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.4);
+    animation: crossPulse 1.2s ease infinite;
+}
+
+.candy.cross::after {
+    content: '✚';
+    font-size: 22px;
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
+    animation: starPulse 1s ease infinite;
+}
+
+@keyframes crossPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.07); }
+}
+
+/* ===== 闲置提示（可行交换高亮） ===== */
+.candy.hint {
+    animation: hintShake 0.6s ease infinite;
+    filter: brightness(1.5) drop-shadow(0 0 14px rgba(255, 215, 0, 0.95));
+    z-index: 8;
+}
+
+@keyframes hintShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-3px); }
+    50% { transform: translateX(3px); }
+    75% { transform: translateX(-2px); }
+}
+
+.candy-green.hint {
+    animation: hintShakeGreen 0.6s ease infinite;
+}
+
+@keyframes hintShakeGreen {
+    0%, 100% { transform: rotate(45deg) scale(0.72) translateX(0); }
+    25% { transform: rotate(45deg) scale(0.72) translateX(-3px); }
+    50% { transform: rotate(45deg) scale(0.72) translateX(3px); }
+    75% { transform: rotate(45deg) scale(0.72) translateX(-2px); }
 }
 
 /* ===== Combo文字 ===== */
@@ -665,12 +715,22 @@ html, body {
     font-size: 16px;
 }
 
-/* ===== 成就提示 Toast ===== */
-.achievement-toast {
+/* ===== Toast 容器（垂直堆叠防重叠） ===== */
+#toast-wrap {
     position: fixed;
     top: 80px;
     left: 50%;
-    transform: translateX(-50%) translateY(-100px);
+    transform: translateX(-50%);
+    z-index: 300;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+    pointer-events: none;
+}
+
+/* ===== 成就提示 Toast ===== */
+.achievement-toast {
     background: linear-gradient(135deg, #1a0a2e, #2d1b4e);
     border: 2px solid #ffd700;
     border-radius: 16px;
@@ -679,15 +739,15 @@ html, body {
     align-items: center;
     gap: 12px;
     box-shadow: 0 4px 24px rgba(255, 215, 0, 0.3);
-    z-index: 300;
     opacity: 0;
+    transform: translateY(-20px);
     transition: opacity 0.4s ease, transform 0.4s ease;
     max-width: 320px;
 }
 
 .achievement-toast.show {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    transform: translateY(0);
 }
 
 .achievement-toast .ach-icon {
@@ -787,6 +847,83 @@ html, body {
     cursor: pointer;
     padding: 8px 16px;
     text-decoration: underline;
+}
+
+.text-btn-row {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+/* ===== 继续游戏按钮 ===== */
+.continue-btn {
+    display: block;
+    width: calc(100% - 20px);
+    margin: 8px auto 0;
+    background: linear-gradient(135deg, #2ecc71, #0aaa3a);
+    box-shadow: 0 4px 16px rgba(10, 170, 58, 0.4);
+    font-size: 17px;
+    padding: 11px 24px;
+}
+
+.continue-btn:hover {
+    box-shadow: 0 6px 20px rgba(10, 170, 58, 0.6);
+}
+
+/* ===== 统计面板 ===== */
+.stat-grid {
+    text-align: left;
+    margin: 16px 0;
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    margin-bottom: 6px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.stat-label {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.stat-value {
+    font-size: 18px;
+    font-weight: bold;
+    color: #ffd700;
+}
+
+/* ===== 设置面板 ===== */
+.settings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 16px 0;
+}
+
+.settings-toggle {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    color: #fff;
+    font-size: 15px;
+    padding: 14px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.settings-toggle:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.settings-toggle.off {
+    opacity: 0.55;
+    color: rgba(255, 255, 255, 0.5);
 }
 
 /* ===== 文字按钮(返回菜单) ===== */

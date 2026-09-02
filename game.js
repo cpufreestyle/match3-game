@@ -1212,10 +1212,16 @@ class CandyGame {
     }
 
     showAchievementToast(ach) {
+        let wrap = document.getElementById('toast-wrap');
+        if (!wrap) {
+            wrap = document.createElement('div');
+            wrap.id = 'toast-wrap';
+            document.getElementById('game-container').appendChild(wrap);
+        }
         const toast = document.createElement('div');
         toast.className = 'achievement-toast';
         toast.innerHTML = `<span class="ach-icon">🏆</span><div><div class="ach-title">成就解锁！</div><div class="ach-name">${ach.name}</div><div class="ach-desc">${ach.desc} +10⭐</div></div>`;
-        document.getElementById('game-container').appendChild(toast);
+        wrap.appendChild(toast);
         setTimeout(() => toast.classList.add('show'), 50);
         setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 500); }, 3500);
     }
@@ -1450,8 +1456,8 @@ class CandyGame {
         // 第3、5、7…关为收集目标关，其余为分数关
         if (level >= 3 && level % 2 === 1) {
             const tier = Math.floor((level - 3) / 2);
-            const colorCount = Math.min(2 + Math.floor(tier / 3), 4);
-            const perColor = 25 + tier * 10;
+            const colorCount = Math.min(2 + Math.floor(tier / 4), 3); // 最多3色，避免后期无解
+            const perColor = 15 + tier * 6; // 温和增长：L3=15/色 → L13=45/色
             const targets = {};
             const collected = {};
             const used = new Set();
@@ -1551,6 +1557,10 @@ class CandyGame {
             if (this.findAllMatches().length === 0 && this.hasValidMoves()) break;
         }
         this.renderBoard();
+        // 10次尝试后仍有预存匹配则异步级联清除（保底，不卡死）
+        if (this.findAllMatches().length > 0) {
+            this.processMatches();
+        }
     }
 
     // ===== 关卡完成 =====
@@ -1649,6 +1659,7 @@ class CandyGame {
     nextLevel() {
         this.gameEpoch++;
         this.level++;
+        this.score = 0; // 每关分数独立，targetScore 以本关分数计算
         this.targetScore = 1000 + (this.level - 1) * 600;
         this.moves = 30 + Math.min((this.level - 1) * 2, 12);
         this.comboCount = 0;
@@ -1656,6 +1667,7 @@ class CandyGame {
         this.setupLevelObjective(this.level);
         this.adMoveBoostsUsed = 0;
         this.reviveUsed = false;
+        this.hammerMode = false;
         document.getElementById('revive-ad-btn').style.display = '';
         document.getElementById('level-complete').classList.add('hidden');
         // 恢复通关标题（每日挑战结束会改写此标题）
@@ -1683,10 +1695,17 @@ class CandyGame {
     // ===== 重新开始 =====
     restart() {
         this.gameEpoch++;
+        // 每日挑战中途放弃也占用当日尝试（防刷星）
+        if (this.gameMode === 'daily' && this.dailyTimeLeft > 0 && this.dailyTimeLeft < 30) {
+            this.dailyChallengeDone = true;
+            safeSet('candyMatch_dailyDone', new Date().toDateString());
+        }
         this.gameMode = 'classic';
         if (this.dailyTimer) { clearInterval(this.dailyTimer); this.dailyTimer = null; }
         this.adMoveBoostsUsed = 0;
         this.reviveUsed = false;
+        this.hammerMode = false;
+        this.boardEl.style.cursor = '';
         document.getElementById('revive-ad-btn').style.display = '';
         this.level = 1;
         this.score = 0;
@@ -1728,9 +1747,18 @@ class CandyGame {
             levelEl.parentElement.querySelector('.hud-label').textContent = '⏱';
             levelEl.textContent = this.dailyTimeLeft + 's';
             levelEl.style.color = this.dailyTimeLeft <= 5 ? '#ff6b6b' : '#ffd700';
+            // 步数类道具在每日模式无意义（步数无限），隐藏
+            const extraBtn = document.getElementById('item-extra-moves');
+            const adMovesBtn = document.getElementById('item-ad-moves');
+            if (extraBtn) extraBtn.style.display = 'none';
+            if (adMovesBtn) adMovesBtn.style.display = 'none';
         } else {
             movesEl.parentElement.style.display = '';
             if (progressContainer) progressContainer.style.display = '';
+            const extraBtn = document.getElementById('item-extra-moves');
+            const adMovesBtn = document.getElementById('item-ad-moves');
+            if (extraBtn && !AD_CONFIG.enabled) extraBtn.style.display = '';
+            if (adMovesBtn && AD_CONFIG.enabled) adMovesBtn.style.display = '';
             levelEl.parentElement.querySelector('.hud-label').textContent = '关卡';
             levelEl.style.color = '#fff';
             movesEl.textContent = this.moves;
@@ -1863,8 +1891,10 @@ class CandyGame {
         this.hammerMode = false;
         this.boardEl.style.cursor = '';
         this.isProcessing = true;
+        const epoch = this.gameEpoch;
         const candy = this.board[row][col];
         if (candy) {
+            this.comboCount = 1; // 独立结算，不继承旧连击倍率
             const toRemove = new Set([`${row},${col}`]);
             // 如果是特殊糖果，触发其效果
             if (candy.special) {
@@ -1873,6 +1903,9 @@ class CandyGame {
             }
             await this.removeCandies(toRemove);
             await this.dropAndFill();
+            if (epoch !== this.gameEpoch) { this.isProcessing = false; return; }
+            // 锤子敲除后下落可能产生新匹配，走级联结算
+            await this.processMatches();
         }
         this.checkGameState();
         this.isProcessing = false;
@@ -1882,10 +1915,17 @@ class CandyGame {
     }
 
     showToast(msg, icon = '道具', duration = 2000) {
+        // Toast 容器（垂直堆叠，避免重叠）
+        let wrap = document.getElementById('toast-wrap');
+        if (!wrap) {
+            wrap = document.createElement('div');
+            wrap.id = 'toast-wrap';
+            document.getElementById('game-container').appendChild(wrap);
+        }
         const toast = document.createElement('div');
         toast.className = 'achievement-toast';
         toast.innerHTML = `<span class="ach-icon">${icon}</span><div><div class="ach-name">${msg}</div></div>`;
-        document.getElementById('game-container').appendChild(toast);
+        wrap.appendChild(toast);
         setTimeout(() => toast.classList.add('show'), 50);
         setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 500); }, duration);
     }
@@ -2008,6 +2048,7 @@ class GameDistributionProvider {
         this._rewardGranted = false;
         this._pendingReward = null;
         this._pendingFail = null;
+        this._onAdSettled = null;
     }
 
     _initSdk(onReady, onFail) {
@@ -2034,6 +2075,7 @@ class GameDistributionProvider {
                         break;
                     case 'SDK_GAME_START':
                         // 广告结束 → 恢复游戏并结算奖励
+                        if (self._onAdSettled) { const f = self._onAdSettled; self._onAdSettled = null; f(); }
                         if (self._pendingReward && self._rewardGranted) {
                             self._pendingReward();
                         } else if (self._pendingFail) {
@@ -2056,10 +2098,12 @@ class GameDistributionProvider {
         const s = document.createElement('script');
         s.src = 'https://html5.api.gamedistribution.com/main.min.js';
         s.async = true;
-        s.onerror = () => onFail();
+        let settled = false; // 防止超时与 onerror 双重触发
+        const settleFail = () => { if (!settled) { settled = true; onFail(); } };
+        s.onerror = () => settleFail();
         document.head.appendChild(s);
         // SDK加载超时保护（15秒）
-        setTimeout(() => { if (!this.sdkReady) onFail(); }, 15000);
+        setTimeout(() => { if (!this.sdkReady) settleFail(); }, 15000);
     }
 
     showRewardedAd(onReward, onFail) {
@@ -2068,14 +2112,23 @@ class GameDistributionProvider {
             this._pendingReward = onReward;
             this._pendingFail = onFail;
             this._rewardGranted = false;
+            let adSettled = false; // showAd reject 与 GAME_START 事件防双触发
             // 先预加载激励广告（幂等）
             try { if (window.gdsdk.preloadAd) window.gdsdk.preloadAd('rewarded'); } catch (e) {}
             window.gdsdk.showAd('rewarded').catch(() => {
-                // 无法填充广告（网络/库存原因）
-                this._pendingReward = null;
-                this._pendingFail = null;
-                onFail();
+                // 无法填充广告（网络/库存原因）——延迟判定，SDK可能仍会发 GAME_START
+                setTimeout(() => {
+                    if (!adSettled) {
+                        adSettled = true;
+                        this._pendingReward = null;
+                        this._pendingFail = null;
+                        onFail();
+                    }
+                }, 1500);
             });
+            // 在 GAME_START 结算时标记 settled
+            const origStart = this._onAdSettled;
+            this._onAdSettled = () => { adSettled = true; if (origStart) origStart(); };
         }, onFail);
     }
 }
@@ -2098,7 +2151,11 @@ class GameAudio {
 
     init() {
         if (!this.ctx) {
-            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            try {
+                this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            } catch (e) {
+                this.enabled = false; // 浏览器不支持/策略限制时静默禁用音效
+            }
         }
     }
 
@@ -2333,7 +2390,15 @@ document.getElementById('next-level-btn').addEventListener('click', () => {
 });
 
 document.getElementById('restart-btn').addEventListener('click', () => {
-    if (game) game.restart();
+    if (!game) return;
+    if (game.score > 0 && !confirm('确定放弃当前进度重新开始？')) return;
+    game.restart();
+});
+
+document.getElementById('back-to-menu-btn2').addEventListener('click', () => {
+    if (!game) return;
+    game.restart();
+    document.getElementById('start-screen').classList.remove('hidden');
 });
 
 // 暂停/恢复
@@ -2346,10 +2411,10 @@ document.getElementById('resume-btn').addEventListener('click', () => {
 });
 
 document.getElementById('restart-from-pause-btn').addEventListener('click', () => {
-    if (game) {
-        game.resume();
-        game.restart();
-    }
+    if (!game) return;
+    if (game.score > 0 && !confirm('确定放弃当前进度重新开始？')) return;
+    game.resume();
+    game.restart();
 });
 
 // 每日挑战
@@ -2371,15 +2436,15 @@ document.getElementById('daily-btn').addEventListener('click', () => {
 
 document.getElementById('back-to-menu-btn').addEventListener('click', () => {
 
-    if (game) {
+    if (!game) return;
 
-        game.resume();
+    if (game.score > 0 && !confirm('确定放弃当前进度返回主菜单？')) return;
 
-        game.restart();
+    game.resume();
 
-        document.getElementById('start-screen').classList.remove('hidden');
+    game.restart();
 
-    }
+    document.getElementById('start-screen').classList.remove('hidden');
 
 });
 
