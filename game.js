@@ -742,43 +742,49 @@ class CandyGame {
     // ===== 特殊糖果激活 =====
     activateSpecialsInMatch(toRemove, matches) {
         const additional = new Set();
+        // 链式扩散：被爆炸波及的特殊糖果继续触发自身效果（BFS）
+        const processed = new Set();
 
-        for (const key of toRemove) {
-            const [r, c] = key.split(',').map(Number);
-            const candy = this.board[r][c];
-            if (!candy || !candy.special) continue;
+        const expand = (initialKeys) => {
+            const queue = [...initialKeys];
+            while (queue.length > 0) {
+                const key = queue.shift();
+                if (processed.has(key)) continue;
+                processed.add(key);
 
-            if (candy.special === 'striped-h') {
-                // 消除整行
-                for (let cc = 0; cc < BOARD_SIZE; cc++) {
-                    additional.add(`${r},${cc}`);
-                }
-            } else if (candy.special === 'striped-v') {
-                // 消除整列
-                for (let rr = 0; rr < BOARD_SIZE; rr++) {
-                    additional.add(`${rr},${c}`);
-                }
-            } else if (candy.special === 'cross') {
-                // 十字糖：整行+整列
-                for (let cc = 0; cc < BOARD_SIZE; cc++) {
-                    additional.add(`${r},${cc}`);
-                }
-                for (let rr = 0; rr < BOARD_SIZE; rr++) {
-                    additional.add(`${rr},${c}`);
-                }
-            } else if (candy.special === 'wrapped') {
-                // 3x3爆炸
-                for (let dr = -1; dr <= 1; dr++) {
-                    for (let dc = -1; dc <= 1; dc++) {
-                        const nr = r + dr, nc = c + dc;
-                        if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
-                            additional.add(`${nr},${nc}`);
+                const [r, c] = key.split(',').map(Number);
+                const candy = this.board[r][c];
+                if (!candy || !candy.special) continue;
+
+                const blast = [];
+                if (candy.special === 'striped-h') {
+                    for (let cc = 0; cc < BOARD_SIZE; cc++) blast.push(`${r},${cc}`);
+                } else if (candy.special === 'striped-v') {
+                    for (let rr = 0; rr < BOARD_SIZE; rr++) blast.push(`${rr},${c}`);
+                } else if (candy.special === 'cross') {
+                    for (let cc = 0; cc < BOARD_SIZE; cc++) blast.push(`${r},${cc}`);
+                    for (let rr = 0; rr < BOARD_SIZE; rr++) blast.push(`${rr},${c}`);
+                } else if (candy.special === 'wrapped') {
+                    for (let dr = -1; dr <= 1; dr++) {
+                        for (let dc = -1; dc <= 1; dc++) {
+                            const nr = r + dr, nc = c + dc;
+                            if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
+                                blast.push(`${nr},${nc}`);
+                            }
                         }
                     }
                 }
+                // 新波及的特殊糖果入队继续扩散
+                for (const k of blast) {
+                    if (!processed.has(k)) {
+                        additional.add(k);
+                        queue.push(k);
+                    }
+                }
             }
-        }
+        };
 
+        expand(toRemove);
         return additional;
     }
 
@@ -1040,6 +1046,7 @@ class CandyGame {
     // ===== 下落和填充 =====
     async dropAndFill() {
         this.state = GameState.FALLING;
+        const fallingEls = [];
 
         // 逐列处理下落
         for (let c = 0; c < BOARD_SIZE; c++) {
@@ -1061,14 +1068,10 @@ class CandyGame {
                         cellEl.appendChild(candy.el);
                         candy.el.classList.add('falling');
 
-                        // 计算下落距离（从原位置到新位置）
+                        // 设置起始位置（下落距离），稍后统一触发动画
                         const fallDistance = (writeRow - r) * (this.cellSize + 2);
                         candy.el.style.transform = `translateY(${-fallDistance}px)`;
-
-                        // 触发回流
-                        void candy.el.offsetHeight;
-
-                        candy.el.style.transform = '';
+                        fallingEls.push(candy.el);
                     }
                     writeRow--;
                 }
@@ -1097,9 +1100,18 @@ class CandyGame {
                 // 新糖果从棋盘上方落入
                 const fallDistance = (r + 1) * (this.cellSize + 2);
                 candy.el.style.transform = `translateY(${-fallDistance}px)`;
-                void candy.el.offsetHeight;
-                candy.el.style.transform = '';
+                fallingEls.push(candy.el);
             }
+        }
+
+        // 单次批量触发动画：等待一帧让起始 transform 生效，再统一清零
+        if (fallingEls.length > 0) {
+            await new Promise(resolve => requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    fallingEls.forEach(el => { el.style.transform = ''; });
+                    resolve();
+                });
+            }));
         }
 
         await this.wait(400);
@@ -1492,37 +1504,7 @@ class CandyGame {
     }
 
     hasValidMoves() {
-        // 彩色炸弹总是可以交换
-        for (let r = 0; r < BOARD_SIZE; r++) {
-            for (let c = 0; c < BOARD_SIZE; c++) {
-                if (this.board[r][c] && this.board[r][c].special === 'color-bomb') return true;
-            }
-        }
-        // 检查普通匹配
-        for (let r = 0; r < BOARD_SIZE; r++) {
-            for (let c = 0; c < BOARD_SIZE; c++) {
-                if (c < BOARD_SIZE - 1) {
-                    this.swapData(r, c, r, c + 1);
-                    if (this.findAllMatches().length > 0) { this.swapData(r, c, r, c + 1); return true; }
-                    this.swapData(r, c, r, c + 1);
-                }
-                if (r < BOARD_SIZE - 1) {
-                    this.swapData(r, c, r + 1, c);
-                    if (this.findAllMatches().length > 0) { this.swapData(r, c, r + 1, c); return true; }
-                    this.swapData(r, c, r + 1, c);
-                }
-            }
-        }
-        // 检查相邻特殊糖果组合（两个特殊糖果交换总是合法的）
-        for (let r = 0; r < BOARD_SIZE; r++) {
-            for (let c = 0; c < BOARD_SIZE; c++) {
-                const candy = this.board[r][c];
-                if (!candy || !candy.special) continue;
-                if (c < BOARD_SIZE - 1 && this.board[r][c+1] && this.board[r][c+1].special) return true;
-                if (r < BOARD_SIZE - 1 && this.board[r+1][c] && this.board[r+1][c].special) return true;
-            }
-        }
-        return false;
+        return this.findValidMove() !== null;
     }
 
     swapData(r1, c1, r2, c2) {
