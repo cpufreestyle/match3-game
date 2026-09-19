@@ -1,5 +1,5 @@
 // 糖果消消乐 Service Worker - 缓存优先策略，支持离线游玩
-const CACHE_NAME = 'candy-match-v8'; // ⚠️ 每次部署更新 game.js/style.css/index.html 后必须递增版本号，否则玩家永远加载旧缓存
+const CACHE_NAME = 'candy-match-v11'; // ⚠️ 每次部署更新 game.js/style.css/index.html 后必须递增版本号，否则玩家永远加载旧缓存
 const ASSETS = [
     './',
     './index.html',

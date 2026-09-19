@@ -29,6 +29,7 @@
             <div class="hud-item"><span class="hud-label">分数</span><span id="score-display" class="hud-value">0</span></div>
             <div class="hud-item"><span class="hud-label">步数</span><span id="moves-display" class="hud-value">30</span></div>
             <div class="hud-item star-display"><span class="hud-label">⭐</span><span id="star-count" class="hud-value">0</span></div>
+            <div class="hud-item streak-display" id="streak-badge" style="display:none"><span class="hud-label">连胜</span><span id="streak-count" class="hud-value">0</span></div>
             <div class="hud-controls">
                 <button id="sound-btn" class="ctrl-btn" title="音效开关"><span id="sound-icon">🔊</span></button>
                 <button id="pause-btn" class="ctrl-btn" title="暂停"><span>⏸</span></button>
@@ -70,6 +71,9 @@
                 <div class="start-extra-btns">
                     <button id="continue-btn" class="continue-btn hidden">▶ 继续游戏</button>
                     <div class="text-btn-row">
+                        <button id="level-map-btn" class="text-btn">🗺️ 关卡</button>
+                        <button id="daily-panel-btn" class="text-btn">📅 签到</button>
+                        <button id="story-btn" class="text-btn">🧩 碎片</button>
                         <button id="achievements-btn" class="text-btn">🏆 成就</button>
                         <button id="stats-btn" class="text-btn">📊 统计</button>
                         <button id="settings-btn" class="text-btn">⚙ 设置</button>
@@ -98,10 +102,13 @@
         <div id="level-complete" class="overlay hidden">
             <div class="overlay-content">
                 <h1>🎉 通关！</h1>
+                <div id="level-stars" class="level-stars">☆☆☆</div>
+                <p id="level-mult" class="level-mult"></p>
                 <p>分数：<span id="final-score">0</span></p>
                 <p>剩余步数奖励：<span id="bonus-score">0</span></p>
                 <p>获得星币：<span id="stars-earned">0</span> ⭐</p>
                 <button id="next-level-btn" class="game-btn">下一关</button>
+                <button id="level-map-btn2" class="game-btn btn-text">🗺️ 关卡地图</button>
             </div>
         </div>
 
@@ -126,6 +133,44 @@
             </div>
         </div>
 
+        <!-- 关卡地图 -->
+        <div id="level-map" class="overlay hidden">
+            <div class="overlay-content ach-content">
+                <h1>🗺️ 关卡地图</h1>
+                <p class="level-map-info">累计星数：<span id="map-total-stars">0</span> / <span id="map-max-stars">0</span></p>
+                <div id="level-map-grid" class="level-map-grid"></div>
+                <button id="map-close-btn" class="game-btn">关闭</button>
+            </div>
+        </div>
+
+        <!-- 签到 + 每日任务 -->
+        <div id="daily-panel" class="overlay hidden">
+            <div class="overlay-content ach-content">
+                <h1>📅 每日福利</h1>
+                <h2 class="panel-sub">连续签到</h2>
+                <div id="checkin-row" class="checkin-row"></div>
+                <button id="checkin-btn" class="game-btn">领取今日奖励</button>
+                <h2 class="panel-sub">每日任务</h2>
+                <div id="quest-list" class="quest-list"></div>
+                <button id="daily-close-btn" class="game-btn btn-text">关闭</button>
+            </div>
+        </div>
+
+        <!-- 记忆碎片收集册 -->
+        <div id="story-panel" class="overlay hidden">
+            <div class="overlay-content ach-content">
+                <h1>🧩 记忆碎片</h1>
+                <p class="story-count">已收集：<span id="frag-count">0</span> 片</p>
+                <div id="story-list" class="story-list"></div>
+                <div id="story-reader" class="story-reader hidden">
+                    <h2 id="story-title"></h2>
+                    <p id="story-body"></p>
+                    <button id="story-back-btn" class="game-btn btn-text">返回目录</button>
+                </div>
+                <button id="story-close-btn" class="game-btn">关闭</button>
+            </div>
+        </div>
+
         <!-- 统计面板 -->
         <div id="stats-panel" class="overlay hidden">
             <div class="overlay-content ach-content">
@@ -147,6 +192,7 @@
             <div class="overlay-content ach-content">
                 <h1>⚙ 设置</h1>
                 <div class="settings-list">
+                    <button id="theme-toggle" class="settings-toggle">🎨 主题：经典糖果</button>
                     <button id="music-toggle" class="settings-toggle">🎵 背景音乐：开</button>
                     <button id="sound-toggle" class="settings-toggle">🔊 音效：开</button>
                     <button id="vibration-toggle" class="settings-toggle">📳 震动：开</button>

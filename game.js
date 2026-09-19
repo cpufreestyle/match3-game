@@ -77,7 +77,23 @@ class CandyGame {
 
         // 统计系统
         const loadedStats = safeGetJSON('candyMatch_stats', null) || {};
-        this.stats = { games: 0, cleared: 0, bestCombo: 0, seconds: 0, ...loadedStats };
+        this.stats = { games: 0, cleared: 0, bestCombo: 0, seconds: 0, streak: 0, bestStreak: 0, ...loadedStats };
+
+        // 关卡地图：每关星级 + 解锁进度
+        this.levelStars = safeGetJSON('candyMatch_levelStars', {});
+        this.unlockedLevel = parseInt(safeGet('candyMatch_unlocked', 1)) || 1;
+
+        // 每日签到（7天循环）
+        this.checkin = safeGetJSON('candyMatch_checkin', { last: '', streak: 0 });
+
+        // 每日任务
+        this.quests = safeGetJSON('candyMatch_quests', { date: '', list: [] });
+
+        // 主题皮肤
+        this.theme = safeGet('candyMatch_theme', 'classic');
+
+        // 记忆碎片（剧情收集）
+        this.fragments = parseInt(safeGet('candyMatch_fragments', 0)) || 0;
 
         // 每日挑战
         this.gameMode = 'classic'; // 'classic' | 'daily'
@@ -108,6 +124,8 @@ class CandyGame {
         this.generateBoard();
         this.renderBoard();
         this.bindEvents();
+        this.ensureQuests();
+        this.applyTheme(this.theme);
         this.updateHUD();
 
         let resizeTimer = null;
@@ -139,8 +157,10 @@ class CandyGame {
     // ===== 棋盘生成 =====
     generateBoard() {
         this.board = [];
+        this.obstacles = [];
         for (let r = 0; r < BOARD_SIZE; r++) {
             this.board[r] = [];
+            this.obstacles[r] = [];
             for (let c = 0; c < BOARD_SIZE; c++) {
                 let type;
                 do {
@@ -149,11 +169,113 @@ class CandyGame {
                 this.board[r][c] = {
                     type: type,
                     color: CANDY_COLORS[type],
-                    special: null,  // null | 'striped-h' | 'striped-v' | 'wrapped' | 'color-bomb'
+                    special: null,  // null | 'striped-h' | 'striped-v' | 'wrapped' | 'color-bomb' | 'cross'
                     row: r,
                     col: c,
                     el: null
                 };
+                this.obstacles[r][c] = null;
+            }
+        }
+    }
+
+    // ===== 障碍物 =====
+    // 冰块：阻挡交换，相邻消除时受损；果冻：糖果被消除时清除
+    initObstacles(spec) {
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                this.obstacles[r][c] = null;
+            }
+        }
+        if (!spec) return;
+        const { kind, cells } = spec;
+        for (const [r, c] of cells) {
+            if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) continue;
+            this.obstacles[r][c] = kind === 'ice'
+                ? { type: 'ice', hp: spec.hp || 1 }
+                : { type: 'jelly' };
+        }
+    }
+
+    // 该格是否被冰块锁住（不可交换）
+    isLocked(r, c) {
+        const ob = this.obstacles && this.obstacles[r] && this.obstacles[r][c];
+        return !!(ob && ob.type === 'ice');
+    }
+
+    // 冰块受损（相邻消除触发），返回是否击碎
+    damageIce(r, c, amount = 1) {
+        const ob = this.obstacles && this.obstacles[r] && this.obstacles[r][c];
+        if (!ob || ob.type !== 'ice') return false;
+        ob.hp -= amount;
+        if (ob.hp <= 0) {
+            this.obstacles[r][c] = null;
+            this.refreshObstacleEl(r, c);
+            return true;
+        }
+        this.refreshObstacleEl(r, c);
+        return false;
+    }
+
+    // 清除果冻（糖果被消除时触发）
+    clearJelly(r, c) {
+        const ob = this.obstacles && this.obstacles[r] && this.obstacles[r][c];
+        if (!ob || ob.type !== 'jelly') return false;
+        this.obstacles[r][c] = null;
+        this.refreshObstacleEl(r, c);
+        return true;
+    }
+
+    refreshObstacleEl(r, c) {
+        const cellEl = this.boardEl.children[r * BOARD_SIZE + c];
+        if (!cellEl) return;
+        const ob = this.obstacles[r][c];
+        cellEl.classList.remove('ob-ice', 'ob-ice-2', 'ob-jelly');
+        if (!ob) return;
+        if (ob.type === 'ice') {
+            cellEl.classList.add('ob-ice');
+            if (ob.hp >= 2) cellEl.classList.add('ob-ice-2');
+        } else if (ob.type === 'jelly') {
+            cellEl.classList.add('ob-jelly');
+        }
+    }
+
+    // 障碍物统计（用于目标判定）
+    countObstacles(type) {
+        let n = 0;
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const ob = this.obstacles[r][c];
+                if (ob && ob.type === type) n++;
+            }
+        }
+        return n;
+    }
+
+    // 对一批被消除的格子结算障碍（冰块相邻受损 + 果冻清除）
+    applyObstacleDamage(clearedKeys) {
+        const cleared = new Set(clearedKeys);
+        const hit = new Set();
+        // 果冻：被消除的格子自身
+        for (const key of cleared) {
+            const [r, c] = key.split(',').map(Number);
+            if (this.obstacles[r][c] && this.obstacles[r][c].type === 'jelly') {
+                this.clearJelly(r, c);
+            }
+        }
+        // 冰块：消除格的四邻（含自身）
+        for (const key of cleared) {
+            const [r, c] = key.split(',').map(Number);
+            const targets = [[r, c], [r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
+            for (const [nr, nc] of targets) {
+                if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE) continue;
+                const tkey = `${nr},${nc}`;
+                if (hit.has(tkey)) continue;
+                const ob = this.obstacles[nr][nc];
+                if (ob && ob.type === 'ice') {
+                    hit.add(tkey);
+                    this.damageIce(nr, nc, 1);
+                }
             }
         }
     }
@@ -190,6 +312,16 @@ class CandyGame {
                     const candyEl = this.createCandyElement(candy);
                     cell.appendChild(candyEl);
                     candy.el = candyEl;
+                }
+                // 障碍物样式
+                const ob = this.obstacles && this.obstacles[r] ? this.obstacles[r][c] : null;
+                if (ob) {
+                    if (ob.type === 'ice') {
+                        cell.classList.add('ob-ice');
+                        if (ob.hp >= 2) cell.classList.add('ob-ice-2');
+                    } else if (ob.type === 'jelly') {
+                        cell.classList.add('ob-jelly');
+                    }
                 }
                 this.boardEl.appendChild(cell);
             }
@@ -388,6 +520,12 @@ class CandyGame {
     // ===== 交换糖果 =====
     async attemptSwap(r1, c1, r2, c2) {
         if (this.isProcessing) return;
+        // 冰块锁住的格子不可交换
+        if (this.isLocked(r1, c1) || this.isLocked(r2, c2)) {
+            this.audio.play('invalid');
+            this.showToast('冰块锁住了，先消除旁边的糖果', '🧊');
+            return;
+        }
         this.isProcessing = true;
         this.state = GameState.SWAPPING;
         try {
@@ -981,6 +1119,7 @@ class CandyGame {
     createSpecialAt(row, col, special, type) {
         this.totalSpecials++;
         safeSet('candyMatch_totalSpecials', this.totalSpecials);
+        this.bumpQuest('special', 1);
         this.checkAchievements();
         const candy = {
             type: type,
@@ -1028,6 +1167,15 @@ class CandyGame {
 
         // 统计累计消除
         this.stats.cleared += positions.length;
+        // 障碍结算：冰块相邻受损 + 果冻清除
+        this.applyObstacleDamage([...keys]);
+        // 每日任务：累计消除 + 按颜色累加增量
+        this.bumpQuest('cleared', positions.length);
+        const colorCount = {};
+        for (const p of positions) colorCount[p.color] = (colorCount[p.color] || 0) + 1;
+        for (const col in colorCount) {
+            this.bumpQuest('color:' + col, colorCount[col]);
+        }
 
         // 显示分数飘字
         if (positions.length > 0) {
@@ -1195,6 +1343,7 @@ class CandyGame {
     showCombo(count) {
         this.maxCombo = Math.max(this.maxCombo, count);
         if (count > this.stats.bestCombo) this.stats.bestCombo = count;
+        this.setQuestMetric('combo', count);
         this.checkAchievements();
         const texts = ['', '', 'NICE!', 'GREAT!', 'AMAZING!', 'AWESOME!', 'INCREDIBLE!', 'UNBELIEVABLE!'];
         const text = texts[Math.min(count, texts.length - 1)] || `${count}x COMBO!`;
@@ -1237,6 +1386,323 @@ class CandyGame {
         setTimeout(() => toast.classList.add('show'), 50);
         setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 500); }, 3500);
     }
+
+    // ============================================================
+    //  关卡地图（星级进度）
+    // ============================================================
+    renderLevelMap() {
+        const grid = document.getElementById('level-map-grid');
+        if (!grid) return;
+        const maxLevel = Math.max(this.unlockedLevel, 12);
+        let total = 0;
+        let html = '';
+        for (let n = 1; n <= maxLevel; n++) {
+            const locked = n > this.unlockedLevel;
+            const s = this.levelStars[n] || 0;
+            total += s;
+            const stars = '⭐'.repeat(s) + '☆'.repeat(3 - s);
+            html += `<button class="map-cell${locked ? ' locked' : ''}" data-level="${n}"${locked ? ' disabled' : ''}>
+                <span class="map-num">${locked ? '🔒' : n}</span>
+                <span class="map-stars">${locked ? '' : stars}</span>
+            </button>`;
+        }
+        grid.innerHTML = html;
+        const tEl = document.getElementById('map-total-stars');
+        if (tEl) tEl.textContent = total;
+        const mEl = document.getElementById('map-max-stars');
+        if (mEl) mEl.textContent = maxLevel * 3;
+        // 绑定关卡选择
+        grid.querySelectorAll('.map-cell:not(.locked)').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const lv = parseInt(btn.dataset.level);
+                this.startLevel(lv);
+                this.showToast(`关卡 ${lv} 开始`, '🗺️');
+            });
+        });
+    }
+
+    // ============================================================
+    //  每日签到（7天循环）
+    // ============================================================
+    static CHECKIN_REWARDS = [
+        { stars: 10, label: '10⭐' },
+        { stars: 15, label: '15⭐' },
+        { stars: 20, label: '20⭐' },
+        { stars: 25, label: '25⭐' },
+        { stars: 30, label: '30⭐' },
+        { stars: 40, label: '40⭐' },
+        { stars: 80, label: '80⭐' }
+    ];
+
+    todayStr() { return new Date().toDateString(); }
+
+    yesterdayStr() {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        return d.toDateString();
+    }
+
+    checkinAvailable() {
+        return this.checkin.last !== this.todayStr();
+    }
+
+    // 当前处于 7 天循环的第几天（0-6）
+    checkinIndex() {
+        if (this.checkin.last === this.todayStr()) return Math.max(0, (this.checkin.streak - 1) % 7);
+        if (this.checkin.last === this.yesterdayStr()) return (this.checkin.streak % 7);
+        return 0; // 断签重置到第1天
+    }
+
+    claimCheckin() {
+        if (!this.checkinAvailable()) {
+            this.showToast('今日已签到，明天再来', '📅');
+            return;
+        }
+        // 连续则累加，断签重置
+        if (this.checkin.last === this.yesterdayStr()) {
+            this.checkin.streak = (this.checkin.streak || 0) + 1;
+        } else {
+            this.checkin.streak = 1;
+        }
+        const idx = (this.checkin.streak - 1) % 7;
+        const reward = CandyGame.CHECKIN_REWARDS[idx];
+        this.stars += reward.stars;
+        safeSet('candyMatch_stars', this.stars);
+        this.updateStarDisplay();
+        this.checkin.last = this.todayStr();
+        safeSet('candyMatch_checkin', JSON.stringify(this.checkin));
+        this.showToast(`签到成功！+${reward.stars}⭐（连续${this.checkin.streak}天）`, '📅');
+        this.renderDailyPanel();
+    }
+
+    renderDailyPanel() {
+        // 签到行
+        const row = document.getElementById('checkin-row');
+        if (row) {
+            const idx = this.checkinIndex();
+            const claimedToday = !this.checkinAvailable();
+            row.innerHTML = CandyGame.CHECKIN_REWARDS.map((r, i) => {
+                const done = i < idx || (i === idx && claimedToday);
+                const active = i === idx && !claimedToday;
+                return `<div class="checkin-cell${done ? ' done' : ''}${active ? ' active' : ''}">
+                    <span class="checkin-day">第${i + 1}天</span>
+                    <span class="checkin-reward">${r.label}</span>
+                </div>`;
+            }).join('');
+        }
+        const btn = document.getElementById('checkin-btn');
+        if (btn) {
+            const avail = this.checkinAvailable();
+            btn.textContent = avail ? '领取今日奖励' : '✓ 今日已签到';
+            btn.disabled = !avail;
+            btn.style.opacity = avail ? '1' : '0.5';
+        }
+        // 任务列表
+        this.renderQuests();
+    }
+
+    // ============================================================
+    //  每日任务
+    // ============================================================
+    static QUEST_POOL = [
+        { id: 'clear_color_red',    desc: '消除 30 个红色糖果',   goal: 30, metric: 'color:red',    reward: 20 },
+        { id: 'clear_color_blue',   desc: '消除 30 个蓝色糖果',   goal: 30, metric: 'color:blue',   reward: 20 },
+        { id: 'clear_color_green',  desc: '消除 30 个绿色糖果',   goal: 30, metric: 'color:green',  reward: 20 },
+        { id: 'clear_total',        desc: '累计消除 80 个糖果',   goal: 80, metric: 'cleared',      reward: 25 },
+        { id: 'combo',              desc: '达成 4 连击',          goal: 4,  metric: 'combo',        reward: 30 },
+        { id: 'clear_level',        desc: '通关 1 次',            goal: 1,  metric: 'clear',        reward: 30 },
+        { id: 'use_special',        desc: '创建 5 个特殊糖果',     goal: 5,  metric: 'special',      reward: 25 },
+        { id: 'play_games',         desc: '游玩 2 局',            goal: 2,  metric: 'games',        reward: 15 }
+    ];
+
+    ensureQuests() {
+        const today = this.todayStr();
+        if (this.quests.date !== today || !Array.isArray(this.quests.list) || this.quests.list.length !== 3) {
+            // 随机抽3个不同任务
+            const pool = [...CandyGame.QUEST_POOL];
+            const picked = [];
+            for (let i = 0; i < 3 && pool.length > 0; i++) {
+                const k = Math.floor(Math.random() * pool.length);
+                picked.push({ ...pool.splice(k, 1)[0], progress: 0, claimed: false });
+            }
+            this.quests = { date: today, list: picked };
+            safeSet('candyMatch_quests', JSON.stringify(this.quests));
+        }
+    }
+
+    bumpQuest(metric, amount = 1) {
+        this.ensureQuests();
+        let changed = false;
+        for (const q of this.quests.list) {
+            if (q.claimed || q.metric !== metric) continue;
+            q.progress = Math.min(q.goal, (q.progress || 0) + amount);
+            changed = true;
+        }
+        if (changed) safeSet('candyMatch_quests', JSON.stringify(this.quests));
+    }
+
+    // 消除类任务用累积值设置（避免重复累加）
+    setQuestMetric(metric, value) {
+        this.ensureQuests();
+        let changed = false;
+        for (const q of this.quests.list) {
+            if (q.claimed || q.metric !== metric) continue;
+            if (value > (q.progress || 0)) { q.progress = Math.min(q.goal, value); changed = true; }
+        }
+        if (changed) safeSet('candyMatch_quests', JSON.stringify(this.quests));
+    }
+
+    claimQuest(index) {
+        this.ensureQuests();
+        const q = this.quests.list[index];
+        if (!q || q.claimed || q.progress < q.goal) return;
+        q.claimed = true;
+        this.stars += q.reward;
+        safeSet('candyMatch_stars', this.stars);
+        safeSet('candyMatch_quests', JSON.stringify(this.quests));
+        this.updateStarDisplay();
+        this.showToast(`任务完成！+${q.reward}⭐`, '✅');
+        this.renderQuests();
+    }
+
+    renderQuests() {
+        this.ensureQuests();
+        const list = document.getElementById('quest-list');
+        if (!list) return;
+        list.innerHTML = this.quests.list.map((q, i) => {
+            const done = q.progress >= q.goal;
+            const pct = Math.min(100, (q.progress / q.goal) * 100);
+            return `<div class="quest-item${q.claimed ? ' claimed' : ''}">
+                <div class="quest-main">
+                    <span class="quest-desc">${q.desc}</span>
+                    <span class="quest-progress">${q.progress || 0}/${q.goal}</span>
+                </div>
+                <div class="quest-bar"><div class="quest-bar-fill" style="width:${pct}%"></div></div>
+                ${q.claimed ? '<span class="quest-claimed">✓ 已领取</span>'
+                    : done ? `<button class="quest-claim-btn" data-idx="${i}">领取 +${q.reward}⭐</button>`
+                    : ''}
+            </div>`;
+        }).join('');
+        list.querySelectorAll('.quest-claim-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.claimQuest(parseInt(btn.dataset.idx)));
+        });
+    }
+
+    // ============================================================
+    //  主题皮肤
+    // ============================================================
+    static THEMES = {
+        classic: { label: '经典糖果', icon: '🎨' },
+        guofeng: { label: '国风古韵', icon: '🏮' }
+    };
+
+    applyTheme(theme) {
+        this.theme = CandyGame.THEMES[theme] ? theme : 'classic';
+        safeSet('candyMatch_theme', this.theme);
+        document.body.dataset.theme = this.theme;
+        const btn = document.getElementById('theme-toggle');
+        if (btn) {
+            const t = CandyGame.THEMES[this.theme];
+            btn.textContent = `${t.icon} 主题：${t.label}`;
+        }
+    }
+
+    toggleTheme() {
+        const next = this.theme === 'classic' ? 'guofeng' : 'classic';
+        this.applyTheme(next);
+        this.showToast(`已切换：${CandyGame.THEMES[next].label}`, CandyGame.THEMES[next].icon);
+    }
+
+    // ============================================================
+    //  记忆碎片收集册（剧情）
+    // ============================================================
+    static STORY_CHAPTERS = [
+        {
+            need: 3,
+            title: '一 · 铜哨初鸣',
+            body: '旧宅的门轴响了很久才停。他站在天井里，听见檐角的铜哨被风一吹，发出很轻的一声。\n那声音像是有人在很远的地方喊他，又像是他自己在喊自己。'
+        },
+        {
+            need: 6,
+            title: '二 · 糖纸上的字',
+            body: '抽屉最深处压着一张褪色的糖纸，包着一颗早已化掉的水果糖。\n糖纸背面用铅笔写着半行字，被人反复描过，笔画都起了毛边——「等雪化了，就回来」。'
+        },
+        {
+            need: 10,
+            title: '三 · 正房的光',
+            body: '正房的窗纸破了一角。午后阳光斜斜地照进来，落在地砖上，恰好是当年摆八仙桌的位置。\n他记得桌上有六个碟子，总是摆得整整齐齐。现在地砖上只剩一圈浅痕。'
+        },
+        {
+            need: 15,
+            title: '四 · 学堂的课桌',
+            body: '学堂的课桌还在，桌角刻着一个歪歪扭扭的「明」字。\n那是他八岁时刻的，被先生罚站了整整一个下午。罚站的地方还在，先生不在了。'
+        },
+        {
+            need: 21,
+            title: '五 · 巷口的糖摊',
+            body: '槐巷口的糖摊早就没了，只剩一块被踩平的石板。\n当年卖糖的老人总说：糖要慢慢含，急了就尝不出甜。他那时不懂，现在懂了。'
+        },
+        {
+            need: 28,
+            title: '六 · 归处',
+            body: '他终于在旧宅里坐下来，把铜哨放在膝上。\n院子里的槐树又开花了，落了一地细碎的白色。风一吹，铜哨又轻轻响了一声。\n这一次，他听清了——那是「回来了」三个字。'
+        }
+    ];
+
+    grantFragments(n) {
+        if (n <= 0) return;
+        const before = this.fragments;
+        this.fragments += n;
+        safeSet('candyMatch_fragments', this.fragments);
+        // 检测新解锁的章节
+        const newly = CandyGame.STORY_CHAPTERS.filter(
+            (ch, i) => before < ch.need && this.fragments >= ch.need
+        );
+        if (newly.length > 0) {
+            this.showToast(`解锁新记忆：${newly[0].title}`, '🧩', 3500);
+        }
+    }
+
+    unlockedChapters() {
+        return CandyGame.STORY_CHAPTERS.filter(ch => this.fragments >= ch.need).length;
+    }
+
+    renderStoryPanel() {
+        const list = document.getElementById('story-list');
+        const countEl = document.getElementById('frag-count');
+        if (countEl) countEl.textContent = this.fragments;
+        // 关闭阅读视图，显示目录
+        const reader = document.getElementById('story-reader');
+        if (reader) reader.classList.add('hidden');
+        if (list) list.classList.remove('hidden');
+        if (!list) return;
+
+        list.innerHTML = CandyGame.STORY_CHAPTERS.map((ch, i) => {
+            const unlocked = this.fragments >= ch.need;
+            return `<div class="story-item${unlocked ? '' : ' locked'}" data-idx="${i}">
+                <span class="story-item-title">${unlocked ? ch.title : '🔒 未解锁'}</span>
+                <span class="story-item-need">${unlocked ? '阅读 ›' : `需 ${ch.need} 片`}</span>
+            </div>`;
+        }).join('');
+
+        list.querySelectorAll('.story-item:not(.locked)').forEach(el => {
+            el.addEventListener('click', () => this.openChapter(parseInt(el.dataset.idx)));
+        });
+    }
+
+    openChapter(idx) {
+        const ch = CandyGame.STORY_CHAPTERS[idx];
+        if (!ch || this.fragments < ch.need) return;
+        const list = document.getElementById('story-list');
+        const reader = document.getElementById('story-reader');
+        const title = document.getElementById('story-title');
+        const body = document.getElementById('story-body');
+        if (list) list.classList.add('hidden');
+        if (reader) reader.classList.remove('hidden');
+        if (title) title.textContent = ch.title;
+        if (body) body.innerHTML = ch.body.split('\n').map(line => line.trim()).filter(Boolean).join('<br>');
+    }
+
     // ===== 暂停/恢复 =====
     pause() {
         if (this.state === GameState.GAME_OVER) return;
@@ -1314,7 +1780,18 @@ class CandyGame {
             level: this.level,
             moves: this.moves,
             targetScore: this.targetScore,
-            objective: this.objective ? { targets: this.objective.targets, collected: this.objective.collected } : null
+            objective: this.objective ? JSON.parse(JSON.stringify(this.objective)) : null,
+            // 障碍层（扁平数组，与 cells 同序）
+            obstacles: (() => {
+                const arr = [];
+                for (let r = 0; r < BOARD_SIZE; r++) {
+                    for (let c = 0; c < BOARD_SIZE; c++) {
+                        const ob = this.obstacles && this.obstacles[r] ? this.obstacles[r][c] : null;
+                        arr.push(ob ? { t: ob.type, hp: ob.hp || 1 } : null);
+                    }
+                }
+                return arr;
+            })()
         };
         safeSet('candyMatch_save', JSON.stringify(data));
     }
@@ -1352,8 +1829,20 @@ class CandyGame {
         this.score = data.score || 0;
         this.level = data.level || 1;
         this.moves = data.moves || 30;
+        this.levelStartMoves = 30 + Math.min((this.level - 1) * 2, 12); // 按关卡还原初始步数（星级基准）
         this.targetScore = data.targetScore || 1000;
-        this.objective = data.objective ? { targets: data.objective.targets, collected: data.objective.collected } : null;
+        this.objective = data.objective ? JSON.parse(JSON.stringify(data.objective)) : null;
+        // 还原障碍层
+        this.obstacles = [];
+        let oi = 0;
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            this.obstacles[r] = [];
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const od = data.obstacles ? data.obstacles[oi] : null;
+                oi++;
+                this.obstacles[r][c] = od ? { type: od.t, hp: od.hp || 1 } : null;
+            }
+        }
         this.comboCount = 0;
         this.maxCombo = 0;
         this.adMoveBoostsUsed = 0;
@@ -1377,6 +1866,7 @@ class CandyGame {
     recordGameStart() {
         this.stats.games++;
         this.saveStats();
+        this.bumpQuest('games', 1);
     }
 
     tickPlayTime() {
@@ -1465,11 +1955,13 @@ class CandyGame {
 
     // ===== 收集目标关卡 =====
     setupLevelObjective(level) {
-        // 第3、5、7…关为收集目标关，其余为分数关
-        if (level >= 3 && level % 2 === 1) {
-            const tier = Math.floor((level - 3) / 2);
-            const colorCount = Math.min(2 + Math.floor(tier / 4), 3); // 最多3色，避免后期无解
-            const perColor = 15 + tier * 6; // 温和增长：L3=15/色 → L13=45/色
+        // 目标轮换：偶数关=分数关；3,7,11…=收集色；5,9,13…=破冰；6,10,14…=果冻
+        this.obstacleSpec = null;
+        if (level >= 3 && level % 4 === 3) {
+            // ===== 收集指定颜色 =====
+            const tier = Math.floor((level - 3) / 4);
+            const colorCount = Math.min(2 + Math.floor(tier / 4), 3);
+            const perColor = 15 + tier * 6;
             const targets = {};
             const collected = {};
             const used = new Set();
@@ -1480,27 +1972,93 @@ class CandyGame {
                 targets[CANDY_COLORS[ci]] = perColor;
                 collected[CANDY_COLORS[ci]] = 0;
             }
-            this.objective = { targets, collected };
+            this.objective = { type: 'collect', targets, collected };
+        } else if (level >= 5 && level % 4 === 1) {
+            // ===== 破冰关 =====
+            const tier = Math.floor((level - 5) / 4);
+            const cells = this.pickObstacleCells(level, 6 + Math.min(tier * 2, 10), 'ice');
+            this.obstacleSpec = { kind: 'ice', hp: tier >= 3 ? 2 : 1, cells };
+            this.objective = { type: 'ice', total: cells.length, cleared: 0 };
+        } else if (level >= 6 && level % 4 === 2) {
+            // ===== 清空果冻 =====
+            const tier = Math.floor((level - 6) / 4);
+            const cells = this.pickObstacleCells(level, 8 + Math.min(tier * 2, 12), 'jelly');
+            this.obstacleSpec = { kind: 'jelly', cells };
+            this.objective = { type: 'jelly', total: cells.length, cleared: 0 };
         } else {
+            // ===== 分数关 =====
             this.objective = null;
         }
     }
 
+    // 按关卡确定性挑选障碍位置（避免每次重开都不同）
+    pickObstacleCells(level, count, kind) {
+        const cells = [];
+        const used = new Set();
+        // 简单确定性伪随机（种子=关卡号）
+        let seed = level * 7919 + (kind === 'ice' ? 13 : 29);
+        const rnd = () => {
+            seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+            return seed / 0x7fffffff;
+        };
+        // 避开最上两行（保证有可交换空间）
+        let guard = 0;
+        while (cells.length < count && guard < count * 20) {
+            guard++;
+            const r = 2 + Math.floor(rnd() * (BOARD_SIZE - 2));
+            const c = Math.floor(rnd() * BOARD_SIZE);
+            const key = `${r},${c}`;
+            if (used.has(key)) continue;
+            used.add(key);
+            cells.push([r, c]);
+        }
+        return cells;
+    }
+
     objectiveMet() {
         if (!this.objective) return true;
-        return Object.keys(this.objective.targets).every(
-            color => this.objective.collected[color] >= this.objective.targets[color]
-        );
+        if (this.objective.type === 'collect') {
+            return Object.keys(this.objective.targets).every(
+                color => this.objective.collected[color] >= this.objective.targets[color]
+            );
+        }
+        // ice / jelly：场上该障碍清空即达成
+        return this.countObstacles(this.objective.type) === 0;
     }
 
     objectiveTotalNeeded() {
         if (!this.objective) return 0;
-        return Object.values(this.objective.targets).reduce((s, n) => s + n, 0);
+        if (this.objective.type === 'collect') {
+            return Object.values(this.objective.targets).reduce((s, n) => s + n, 0);
+        }
+        return this.objective.total;
     }
 
     objectiveTotalCollected() {
         if (!this.objective) return 0;
-        return Object.values(this.objective.collected).reduce((s, n) => s + n, 0);
+        if (this.objective.type === 'collect') {
+            return Object.values(this.objective.collected).reduce((s, n) => s + n, 0);
+        }
+        // 已清除数 = 初始总数 - 剩余数
+        return Math.max(0, this.objective.total - this.countObstacles(this.objective.type));
+    }
+
+    // 目标描述文案（HUD 用）
+    objectiveLabel() {
+        if (!this.objective) return '';
+        const emojis = { red: '🔴', blue: '🔵', green: '🟢', yellow: '🟡', purple: '🟣', orange: '🟠' };
+        if (this.objective.type === 'collect') {
+            return Object.keys(this.objective.targets).map(color =>
+                `${emojis[color] || '🎯'} ${this.objective.collected[color]}/${this.objective.targets[color]}`
+            ).join('  ');
+        }
+        if (this.objective.type === 'ice') {
+            return `🧊 破冰 ${this.objectiveTotalCollected()}/${this.objective.total}`;
+        }
+        if (this.objective.type === 'jelly') {
+            return `🍮 清果冻 ${this.objectiveTotalCollected()}/${this.objective.total}`;
+        }
+        return '';
     }
 
     hasValidMoves() {
@@ -1548,25 +2106,76 @@ class CandyGame {
     // ===== 关卡完成 =====
     levelComplete() {
         this.clearSave();
-        const bonus = this.moves * 50;
+        // 连胜累计
+        this.stats.streak = (this.stats.streak || 0) + 1;
+        this.stats.bestStreak = Math.max(this.stats.bestStreak || 0, this.stats.streak);
+        const mult = this.streakMultiplier();
+        const bonus = Math.round(this.moves * 50 * mult);
         const starsEarned = this.level * 5;
         this.score += bonus;
+
+        // 星级评定（按剩余步数比例）
+        const starRating = this.calcStarRating();
+        const prevStars = this.levelStars[this.level] || 0;
+        if (starRating > prevStars) {
+            this.levelStars[this.level] = starRating;
+            safeSet('candyMatch_levelStars', JSON.stringify(this.levelStars));
+        }
+        if (this.level + 1 > this.unlockedLevel) {
+            this.unlockedLevel = this.level + 1;
+            safeSet('candyMatch_unlocked', this.unlockedLevel);
+        }
+
         this.saveBestRecord();
+        this.saveStats();
         this.stars += starsEarned;
         safeSet('candyMatch_stars', this.stars);
         this.checkAchievements();
+        this.bumpQuest('clear', 1);
+        // 记忆碎片：通关 1 片，三星额外 +1
+        this.grantFragments(starRating >= 3 ? 2 : 1);
+
         document.getElementById('final-score').textContent = this.score;
         document.getElementById('bonus-score').textContent = bonus;
         const starsEl = document.getElementById('stars-earned');
         if (starsEl) starsEl.textContent = starsEarned;
+        this.renderLevelResult(starRating, mult);
         document.getElementById('level-complete').classList.remove('hidden');
         this.audio.play('win');
         this.state = GameState.GAME_OVER;
     }
 
+    // ===== 连胜倍率 =====
+    streakMultiplier() {
+        const s = this.stats.streak || 0;
+        if (s <= 1) return 1;
+        return 1 + Math.min(s - 1, 4) * 0.25; // 2连胜×1.25 → 5+连胜×2
+    }
+
+    // ===== 星级评定 =====
+    calcStarRating() {
+        const startMoves = this.levelStartMoves || 30;
+        const ratio = this.moves / startMoves;
+        if (ratio >= 0.4) return 3;
+        if (ratio >= 0.15) return 2;
+        return 1;
+    }
+
+    renderLevelResult(starRating, mult) {
+        const el = document.getElementById('level-stars');
+        if (el) el.textContent = '⭐'.repeat(starRating) + '☆'.repeat(3 - starRating);
+        const mEl = document.getElementById('level-mult');
+        if (mEl) {
+            const s = this.stats.streak;
+            mEl.textContent = s > 1 ? `🔥 ${s} 连胜 · 奖励 ×${mult}` : '';
+        }
+    }
+
     // ===== 游戏结束 =====
     gameOver() {
         this.clearSave();
+        this.stats.streak = 0; // 失败清零连胜
+        this.saveStats();
         this.saveBestRecord();
         this.checkAchievements();
         document.getElementById('game-over-score').textContent = this.score;
@@ -1641,9 +2250,23 @@ class CandyGame {
     nextLevel() {
         this.gameEpoch++;
         this.level++;
+        this.startLevelCommon();
+    }
+
+    // ===== 开始指定关卡（关卡地图入口） =====
+    startLevel(n) {
+        this.gameEpoch++;
+        this.level = n;
+        this.startLevelCommon();
+        document.getElementById('level-map').classList.add('hidden');
+    }
+
+    // 关卡初始化共用逻辑
+    startLevelCommon() {
         this.score = 0; // 每关分数独立，targetScore 以本关分数计算
         this.targetScore = 1000 + (this.level - 1) * 600;
         this.moves = 30 + Math.min((this.level - 1) * 2, 12);
+        this.levelStartMoves = this.moves; // 用于星级评定
         this.comboCount = 0;
         this.maxCombo = 0;
         this.setupLevelObjective(this.level);
@@ -1655,12 +2278,17 @@ class CandyGame {
         // 恢复通关标题（每日挑战结束会改写此标题）
         document.querySelector('#level-complete h1').textContent = '🎉 通关！';
         this.generateBoard();
+        // 障碍物关卡：在棋盘上铺设冰块/果冻
+        this.initObstacles(this.obstacleSpec);
         this.renderBoard();
         this.updateHUD();
         this.state = GameState.IDLE;
         this.showLevelBanner(this.level);
         if (this.objective) {
-            this.showToast('🎯 本关目标：收集指定糖果！', '🎯');
+            const hint = this.objective.type === 'ice' ? '🧊 本关目标：敲碎所有冰块！'
+                : this.objective.type === 'jelly' ? '🍮 本关目标：清除所有果冻！'
+                : '🎯 本关目标：收集指定糖果！';
+            this.showToast(hint, '🎯');
         }
         this.saveGame();
     }
@@ -1693,6 +2321,7 @@ class CandyGame {
         this.score = 0;
         this.targetScore = 1000;
         this.moves = 30;
+        this.levelStartMoves = 30;
         this.comboCount = 0;
         this.maxCombo = 0;
         this.setupLevelObjective(1);
@@ -1702,6 +2331,7 @@ class CandyGame {
         document.querySelector('#level-complete h1').textContent = '🎉 通关！';
         this.clearSave();
         this.generateBoard();
+        this.initObstacles(this.obstacleSpec);
         this.renderBoard();
         this.updateHUD();
         this.state = GameState.IDLE;
@@ -1752,11 +2382,8 @@ class CandyGame {
             levelEl.textContent = this.level;
             let progress, text;
             if (this.objective) {
-                const emojis = { red: '🔴', blue: '🔵', green: '🟢', yellow: '🟡', purple: '🟣', orange: '🟠' };
-                text = Object.keys(this.objective.targets).map(color =>
-                    `${emojis[color] || '🎯'} ${this.objective.collected[color]}/${this.objective.targets[color]}`
-                ).join('  ');
-                progress = 100 * this.objectiveTotalCollected() / this.objectiveTotalNeeded();
+                text = this.objectiveLabel();
+                progress = 100 * this.objectiveTotalCollected() / Math.max(1, this.objectiveTotalNeeded());
             } else {
                 text = `${this.score} / ${this.targetScore}`;
                 progress = Math.min(100, (this.score / this.targetScore) * 100);
@@ -1767,6 +2394,21 @@ class CandyGame {
 
         // 星星货币
         this.updateStarDisplay();
+        // 连胜徽章
+        this.updateStreakBadge();
+    }
+
+    updateStreakBadge() {
+        const badge = document.getElementById('streak-badge');
+        const cnt = document.getElementById('streak-count');
+        if (!badge) return;
+        const s = this.stats.streak || 0;
+        if (s >= 2 && this.gameMode === 'classic') {
+            badge.style.display = '';
+            if (cnt) cnt.textContent = s;
+        } else {
+            badge.style.display = 'none';
+        }
     }
 
     // ===== 激励广告 =====
@@ -2466,6 +3108,60 @@ document.getElementById('ach-close-btn').addEventListener('click', () => {
 
 });
 
+// 关卡地图
+document.getElementById('level-map-btn').addEventListener('click', () => {
+    if (!game) game = new CandyGame();
+    game.renderLevelMap();
+    document.getElementById('level-map').classList.remove('hidden');
+});
+
+document.getElementById('level-map-btn2').addEventListener('click', () => {
+    if (!game) return;
+    document.getElementById('level-complete').classList.add('hidden');
+    game.renderLevelMap();
+    document.getElementById('level-map').classList.remove('hidden');
+});
+
+document.getElementById('map-close-btn').addEventListener('click', () => {
+    document.getElementById('level-map').classList.add('hidden');
+});
+
+// 签到 + 每日任务
+document.getElementById('daily-panel-btn').addEventListener('click', () => {
+    if (!game) game = new CandyGame();
+    game.renderDailyPanel();
+    document.getElementById('daily-panel').classList.remove('hidden');
+});
+
+document.getElementById('checkin-btn').addEventListener('click', () => {
+    if (game) game.claimCheckin();
+});
+
+document.getElementById('daily-close-btn').addEventListener('click', () => {
+    document.getElementById('daily-panel').classList.add('hidden');
+});
+
+// 主题切换
+document.getElementById('theme-toggle').addEventListener('click', () => {
+    if (!game) game = new CandyGame();
+    game.toggleTheme();
+});
+
+// 记忆碎片收集册
+document.getElementById('story-btn').addEventListener('click', () => {
+    if (!game) game = new CandyGame();
+    game.renderStoryPanel();
+    document.getElementById('story-panel').classList.remove('hidden');
+});
+
+document.getElementById('story-close-btn').addEventListener('click', () => {
+    document.getElementById('story-panel').classList.add('hidden');
+});
+
+document.getElementById('story-back-btn').addEventListener('click', () => {
+    if (game) game.renderStoryPanel();
+});
+
 // 道具按钮
 document.getElementById('item-extra-moves').addEventListener('click', () => { if (game) game.useItem('extra-moves'); });
 document.getElementById('item-hammer').addEventListener('click', () => { if (game) game.useItem('hammer'); });
@@ -2563,6 +3259,16 @@ document.getElementById('vibration-toggle').addEventListener('click', () => {
     var soundPref = safeGet('candyMatch_sound', 'on');
     if (soundPref === 'off') {
         document.getElementById('sound-icon').textContent = '🔇';
+    }
+    // 页面加载即应用已保存的主题（开始界面也生效）
+    var savedTheme = safeGet('candyMatch_theme', 'classic');
+    if (CandyGame.THEMES[savedTheme]) {
+        document.body.dataset.theme = savedTheme;
+        var themeBtn = document.getElementById('theme-toggle');
+        if (themeBtn) {
+            var t = CandyGame.THEMES[savedTheme];
+            themeBtn.textContent = t.icon + ' 主题：' + t.label;
+        }
     }
     // 显示历史最佳记录
     var bestScore = parseInt(safeGet('candyMatch_bestScore', 0)) || 0;
