@@ -1,0 +1,7 @@
+.DS_Store
+.playwright-state/
+.codely-cli/
+*.pyc
+__pycache__/
+taptap_upload_kit/
+taptap_upload_kit.zip

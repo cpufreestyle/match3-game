@@ -1,0 +1,32 @@
+{
+    "name": "糖果消消乐 - Candy Match",
+    "short_name": "糖果消消乐",
+    "description": "经典消除类休闲游戏，交换糖果，匹配消除，挑战高分！",
+    "lang": "zh-CN",
+    "start_url": "./index.html",
+    "scope": "./",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#1a0a2e",
+    "theme_color": "#1a0a2e",
+    "icons": [
+        {
+            "src": "icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}

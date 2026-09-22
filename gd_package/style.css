@@ -1,0 +1,1465 @@
+/* ===== 全局重置 ===== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+}
+
+/* ===== 通用隐藏 ===== */
+.hidden {
+    display: none !important;
+}
+
+html, body {
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    font-family: 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: linear-gradient(135deg, #1a0a2e 0%, #16213e 50%, #0f3460 100%);
+}
+
+/* ===== 游戏容器 ===== */
+#game-container {
+    position: relative;
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    /* 竖屏大屏时垂直居中，充分利用空间 */
+    justify-content: safe center;
+    padding-top: max(10px, env(safe-area-inset-top));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+    max-width: 500px;
+    margin: 0 auto;
+    overflow-y: auto;
+}
+
+/* ===== 背景装饰（漂浮糖果光斑） ===== */
+.bg-deco {
+    position: fixed;
+    border-radius: 50%;
+    opacity: 0.07;
+    pointer-events: none;
+    z-index: 0;
+    animation: bgFloat 14s ease-in-out infinite alternate;
+}
+
+.bg-deco.deco-1 {
+    width: 180px; height: 180px;
+    top: 10%; left: -40px;
+    background: radial-gradient(circle at 35% 35%, #ff6b6b, transparent 70%);
+}
+
+.bg-deco.deco-2 {
+    width: 120px; height: 120px;
+    top: 50%; right: -30px;
+    background: radial-gradient(circle at 35% 35%, #6bb6ff, transparent 70%);
+    animation-delay: -5s;
+}
+
+.bg-deco.deco-3 {
+    width: 90px; height: 90px;
+    bottom: 14%; left: 12%;
+    background: radial-gradient(circle at 35% 35%, #ffd700, transparent 70%);
+    animation-delay: -9s;
+}
+
+.bg-deco.deco-4 {
+    width: 140px; height: 140px;
+    bottom: 28%; right: 8%;
+    background: radial-gradient(circle at 35% 35%, #c46bff, transparent 70%);
+    animation-delay: -7s;
+}
+
+@keyframes bgFloat {
+    0% { transform: translateY(0) rotate(0deg); }
+    100% { transform: translateY(-28px) rotate(10deg); }
+}
+}
+
+/* ===== 顶部HUD ===== */
+#hud {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    width: 100%;
+    max-width: 420px;
+    padding: 10px 15px;
+    margin-bottom: 8px;
+    gap: 6px;
+}
+
+.hud-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 8px 16px;
+    min-width: 90px;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.hud-label {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 2px;
+}
+
+.hud-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+    transition: transform 0.2s ease;
+}
+
+.hud-value.pulse {
+    animation: pulse 0.4s ease;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.3); color: #ffd700; }
+}
+
+/* ===== 进度条 ===== */
+#progress-bar-container {
+    width: 100%;
+    max-width: 420px;
+    height: 24px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    position: relative;
+}
+
+#progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #00d2ff, #3a7bd5, #00d2ff);
+    background-size: 200% 100%;
+    border-radius: 10px;
+    transition: width 0.5s ease;
+    animation: shimmer 2s linear infinite;
+}
+
+@keyframes shimmer {
+    0% { background-position: 0% 0; }
+    100% { background-position: 200% 0; }
+}
+
+#progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 12px;
+    color: #fff;
+    font-weight: bold;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+    white-space: nowrap;
+    z-index: 1;
+}
+
+/* ===== 游戏棋盘 ===== */
+#board {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    gap: 2px;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 2px 8px rgba(0, 0, 0, 0.3);
+    width: min(92vw, 420px);
+    aspect-ratio: 1;
+    max-width: 420px;
+    flex-shrink: 0;
+    touch-action: none;
+}
+
+/* ===== 糖果单元格 ===== */
+.cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    overflow: visible;
+}
+
+.candy {
+    width: 80%;
+    height: 80%;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.2s ease, opacity 0.3s ease;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.candy:hover {
+    transform: scale(1.1);
+}
+
+.candy.selected {
+    transform: scale(1.15);
+    filter: brightness(1.4) drop-shadow(0 0 12px rgba(255, 255, 255, 0.8));
+    z-index: 10;
+}
+
+.candy.removing {
+    animation: candyRemove 0.4s ease forwards;
+}
+
+@keyframes candyRemove {
+    0% { transform: scale(1); opacity: 1; }
+    40% { transform: scale(1.4) rotate(180deg); opacity: 1; filter: brightness(2); }
+    100% { transform: scale(0) rotate(360deg); opacity: 0; }
+}
+
+.candy.falling {
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.candy.swapping {
+    transition: transform 0.25s ease;
+    z-index: 5;
+}
+
+/* ===== 糖果类型样式（颜色+形状差异化，色盲友好） ===== */
+/* 红色 - 圆形 */
+.candy-red {
+    background: radial-gradient(circle at 30% 30%, #ff6b6b, #ee0a0a);
+    box-shadow: 0 2px 8px rgba(238, 10, 10, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 4px 8px rgba(255, 255, 255, 0.3);
+}
+
+/* 蓝色 - 方形 */
+.candy-blue {
+    border-radius: 20%;
+    background: linear-gradient(135deg, #6bb6ff, #0a6eee);
+    box-shadow: 0 2px 8px rgba(10, 110, 238, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 4px 8px rgba(255, 255, 255, 0.3);
+}
+
+/* 绿色 - 菱形 */
+.candy-green {
+    border-radius: 15%;
+    transform: rotate(45deg) scale(0.72);
+    background: linear-gradient(135deg, #6bff9e, #0aaa3a);
+    box-shadow: 0 2px 8px rgba(10, 170, 58, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 4px 8px rgba(255, 255, 255, 0.3);
+}
+
+.candy-green.selected { transform: rotate(45deg) scale(0.82); }
+.candy-green:hover { transform: rotate(45deg) scale(0.78); }
+
+/* 黄色 - 六边形 */
+.candy-yellow {
+    clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+    background: linear-gradient(135deg, #ffe66b, #eeb00a);
+    box-shadow: 0 2px 8px rgba(238, 176, 10, 0.5);
+}
+
+/* 紫色 - 圆角方形 */
+.candy-purple {
+    border-radius: 30%;
+    background: linear-gradient(135deg, #c46bff, #7a0aee);
+    box-shadow: 0 2px 8px rgba(122, 10, 238, 0.5), inset 0 -4px 8px rgba(0, 0, 0, 0.3), inset 0 4px 8px rgba(255, 255, 255, 0.3);
+}
+
+/* 橙色 - 星形 */
+.candy-orange {
+    clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+    background: linear-gradient(135deg, #ffb36b, #ee6a0a);
+    box-shadow: 0 2px 8px rgba(238, 106, 10, 0.5);
+}
+
+/* ===== 特殊糖果 - 条纹 ===== */
+.candy.striped-h::after {
+    content: '';
+    position: absolute;
+    top: 15%;
+    left: 10%;
+    right: 10%;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 2px;
+    box-shadow: 0 8px 0 rgba(255, 255, 255, 0.6), 0 -8px 0 rgba(255, 255, 255, 0.6);
+    animation: stripedGlow 1s ease infinite;
+}
+
+.candy.striped-v::after {
+    content: '';
+    position: absolute;
+    left: 15%;
+    top: 10%;
+    bottom: 10%;
+    width: 3px;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 2px;
+    box-shadow: 8px 0 0 rgba(255, 255, 255, 0.6), -8px 0 0 rgba(255, 255, 255, 0.6);
+    animation: stripedGlow 1s ease infinite;
+}
+
+@keyframes stripedGlow {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+
+/* ===== 特殊糖果 - 彩色炸弹 ===== */
+.candy.color-bomb {
+    background: conic-gradient(#ff6b6b, #6bb6ff, #6bff9e, #ffe66b, #c46bff, #ffb36b, #ff6b6b);
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.5), inset 0 0 15px rgba(0, 0, 0, 0.3);
+    animation: colorBombSpin 3s linear infinite;
+}
+
+@keyframes colorBombSpin {
+    0% { filter: hue-rotate(0deg); }
+    100% { filter: hue-rotate(360deg); }
+}
+
+.candy.color-bomb::after {
+    content: '★';
+    font-size: 24px;
+    color: #fff;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+    animation: starPulse 1s ease infinite;
+}
+
+@keyframes starPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+}
+
+/* ===== 特殊糖果 - 包装糖 ===== */
+.candy.wrapped {
+    box-shadow: 0 0 15px currentColor, inset 0 0 10px rgba(255, 255, 255, 0.5);
+    animation: wrappedPulse 1.5s ease infinite;
+}
+
+.candy.wrapped::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border: 2px solid rgba(255, 255, 255, 0.6);
+    border-radius: 50%;
+    animation: wrappedRing 1.5s ease infinite;
+}
+
+@keyframes wrappedPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+@keyframes wrappedRing {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.1); }
+}
+
+/* ===== 特殊糖果 - 十字糖 ===== */
+.candy.cross {
+    box-shadow: 0 0 18px rgba(255, 255, 255, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.4);
+    animation: crossPulse 1.2s ease infinite;
+}
+
+.candy.cross::after {
+    content: '✚';
+    font-size: 22px;
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
+    animation: starPulse 1s ease infinite;
+}
+
+@keyframes crossPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.07); }
+}
+
+/* ===== 闲置提示（可行交换高亮） ===== */
+.candy.hint {
+    animation: hintShake 0.6s ease infinite;
+    filter: brightness(1.5) drop-shadow(0 0 14px rgba(255, 215, 0, 0.95));
+    z-index: 8;
+}
+
+@keyframes hintShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-3px); }
+    50% { transform: translateX(3px); }
+    75% { transform: translateX(-2px); }
+}
+
+.candy-green.hint {
+    animation: hintShakeGreen 0.6s ease infinite;
+}
+
+@keyframes hintShakeGreen {
+    0%, 100% { transform: rotate(45deg) scale(0.72) translateX(0); }
+    25% { transform: rotate(45deg) scale(0.72) translateX(-3px); }
+    50% { transform: rotate(45deg) scale(0.72) translateX(3px); }
+    75% { transform: rotate(45deg) scale(0.72) translateX(-2px); }
+}
+
+/* ===== Combo文字 ===== */
+#combo-text {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 48px;
+    font-weight: bold;
+    color: #ffd700;
+    text-shadow: 0 0 20px rgba(255, 215, 0, 0.8), 0 4px 8px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    opacity: 0;
+    z-index: 100;
+    white-space: nowrap;
+}
+
+#combo-text.show {
+    animation: comboShow 1.2s ease forwards;
+}
+
+@keyframes comboShow {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+    20% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+    80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -80%) scale(0.8); }
+}
+
+/* ===== 粒子效果 ===== */
+#particles {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 50;
+}
+
+.particle {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    animation: particleFly 0.8s ease forwards;
+}
+
+@keyframes particleFly {
+    0% { opacity: 1; transform: scale(1) translate(0, 0); }
+    100% { opacity: 0; transform: scale(0) translate(var(--dx), var(--dy)); }
+}
+
+/* ===== 分数飘字 ===== */
+.score-popup {
+    position: absolute;
+    font-size: 18px;
+    font-weight: bold;
+    color: #ffd700;
+    text-shadow: 0 0 6px rgba(255, 215, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    z-index: 60;
+    animation: scorePopup 1s ease forwards;
+}
+
+@keyframes scorePopup {
+    0% { opacity: 0; transform: translateY(0) scale(0.5); }
+    20% { opacity: 1; transform: translateY(-10px) scale(1.2); }
+    100% { opacity: 0; transform: translateY(-50px) scale(1); }
+}
+
+/* ===== 覆盖层 ===== */
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    backdrop-filter: blur(8px);
+    transition: opacity 0.3s ease;
+}
+
+.overlay.hidden {
+    display: none;
+}
+
+.overlay-content {
+    background: linear-gradient(135deg, #1a0a2e, #16213e);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 20px;
+    padding: 40px;
+    text-align: center;
+    max-width: 360px;
+    width: 90%;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
+
+.overlay-content h1 {
+    font-size: 36px;
+    color: #fff;
+    margin-bottom: 12px;
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+}
+
+.overlay-content .subtitle {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 16px;
+    margin-bottom: 20px;
+}
+
+.overlay-content .instructions {
+    text-align: left;
+    margin: 20px 0;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+}
+
+.overlay-content .instructions p {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 14px;
+    margin-bottom: 8px;
+    line-height: 1.6;
+}
+
+.overlay-content p {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 18px;
+    margin-bottom: 8px;
+}
+
+.overlay-content span {
+    color: #ffd700;
+    font-weight: bold;
+}
+
+/* ===== 按钮 ===== */
+.game-btn {
+    background: linear-gradient(135deg, #ff6b6b, #ee0a0a);
+    color: #fff;
+    border: none;
+    padding: 14px 40px;
+    font-size: 20px;
+    font-weight: bold;
+    border-radius: 30px;
+    cursor: pointer;
+    margin-top: 16px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 4px 16px rgba(238, 10, 10, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.game-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(238, 10, 10, 0.6);
+}
+
+.game-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(238, 10, 10, 0.4);
+}
+
+.game-btn.btn-secondary {
+    background: linear-gradient(135deg, #3a7bd5, #0a6eee);
+    box-shadow: 0 4px 16px rgba(10, 110, 238, 0.4);
+}
+
+.game-btn.btn-secondary:hover {
+    box-shadow: 0 6px 20px rgba(10, 110, 238, 0.6);
+}
+
+/* ===== HUD 控制按钮 ===== */
+.hud-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ctrl-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    color: #fff;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease, background 0.2s ease;
+    padding: 0;
+    line-height: 1;
+}
+
+.ctrl-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.05);
+}
+
+.ctrl-btn:active {
+    transform: scale(0.95);
+}
+
+/* ===== 最佳记录 ===== */
+.best-record {
+    margin: 12px 0;
+    padding: 12px;
+    background: rgba(255, 215, 0, 0.1);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 215, 0, 0.2);
+}
+
+.best-record p {
+    color: rgba(255, 215, 0, 0.9);
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+/* ===== 合规信息 ===== */
+.compliance-info {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.age-rating {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 6px;
+}
+
+.health-notice {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+    line-height: 1.5;
+    margin-bottom: 8px;
+}
+
+.privacy-link {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    text-decoration: underline;
+}
+
+.privacy-link:hover {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* ===== 响应式 ===== */
+@media (max-height: 600px) {
+    #hud { padding: 5px 10px; margin-bottom: 4px; gap: 4px; }
+    .hud-item { padding: 4px 10px; min-width: 60px; }
+    .hud-value { font-size: 18px; }
+    .hud-label { font-size: 10px; }
+    .ctrl-btn { width: 32px; height: 32px; font-size: 15px; }
+    #progress-bar-container { height: 18px; margin-bottom: 6px; }
+    #board { padding: 4px; }
+    #item-bar { gap: 6px; margin-bottom: 4px; }
+    .item-btn { width: 48px; height: 48px; }
+    .item-icon { font-size: 18px; }
+}
+
+@media (max-width: 380px) {
+    .hud-item { padding: 6px 8px; min-width: 56px; }
+    .hud-value { font-size: 20px; }
+    .ctrl-btn { width: 34px; height: 34px; font-size: 16px; }
+    #combo-text { font-size: 36px; }
+}
+
+/* ===== 道具栏 ===== */
+#item-bar {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    max-width: 420px;
+    margin-bottom: 8px;
+}
+
+.item-btn {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease, background 0.2s ease;
+    padding: 0;
+}
+
+.item-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.05);
+}
+
+.item-btn:active {
+    transform: scale(0.95);
+}
+
+.item-icon {
+    font-size: 22px;
+    line-height: 1;
+}
+
+.item-cost {
+    font-size: 9px;
+    color: rgba(255, 215, 0, 0.8);
+    margin-top: 2px;
+}
+
+/* ===== 星星显示 ===== */
+.star-display {
+    min-width: 60px;
+}
+
+.star-display .hud-value {
+    color: #ffd700;
+}
+
+/* ===== 模式选择按钮 ===== */
+.mode-select {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+.mode-select .game-btn {
+    margin-top: 0;
+    padding: 12px 24px;
+    font-size: 16px;
+}
+
+/* ===== Toast 容器（垂直堆叠防重叠） ===== */
+#toast-wrap {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 300;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+    pointer-events: none;
+}
+
+/* ===== 成就提示 Toast ===== */
+.achievement-toast {
+    background: linear-gradient(135deg, #1a0a2e, #2d1b4e);
+    border: 2px solid #ffd700;
+    border-radius: 16px;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 4px 24px rgba(255, 215, 0, 0.3);
+    opacity: 0;
+    transform: translateY(-20px);
+    transition: opacity 0.4s ease, transform 0.4s ease;
+    max-width: 320px;
+}
+
+.achievement-toast.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.achievement-toast .ach-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+}
+
+.achievement-toast .ach-title {
+    font-size: 11px;
+    color: rgba(255, 215, 0, 0.7);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.achievement-toast .ach-name {
+    font-size: 16px;
+    font-weight: bold;
+    color: #fff;
+    margin: 2px 0;
+}
+
+.achievement-toast .ach-desc {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* ===== 每日挑战计时器 ===== */
+.daily-timer {
+    font-size: 24px;
+    font-weight: bold;
+    color: #ffd700;
+    text-shadow: 0 0 12px rgba(255, 215, 0, 0.5);
+    padding: 8px 16px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    animation: timerPulse 1s ease infinite;
+}
+
+@keyframes timerPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+/* ===== 成就面板 ===== */
+.ach-content {
+    max-width: 380px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+#ach-list {
+    text-align: left;
+    margin: 16px 0;
+}
+
+.ach-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    margin-bottom: 6px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.ach-item.unlocked {
+    border-left: 3px solid #ffd700;
+}
+
+.ach-item.locked {
+    opacity: 0.5;
+    border-left: 3px solid rgba(255, 255, 255, 0.2);
+}
+
+.ach-item-name {
+    font-size: 15px;
+    font-weight: bold;
+    color: #fff;
+}
+
+.ach-item-desc {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* ===== 开始界面额外按钮 ===== */
+.start-extra-btns {
+    margin-top: 8px;
+}
+
+.text-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 215, 0, 0.7);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 8px 16px;
+    text-decoration: underline;
+}
+
+.text-btn-row {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+/* ===== 继续游戏按钮 ===== */
+.continue-btn {
+    display: block;
+    width: calc(100% - 20px);
+    margin: 8px auto 0;
+    background: linear-gradient(135deg, #2ecc71, #0aaa3a);
+    box-shadow: 0 4px 16px rgba(10, 170, 58, 0.4);
+    font-size: 17px;
+    padding: 11px 24px;
+}
+
+.continue-btn:hover {
+    box-shadow: 0 6px 20px rgba(10, 170, 58, 0.6);
+}
+
+/* ===== 统计面板 ===== */
+.stat-grid {
+    text-align: left;
+    margin: 16px 0;
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    margin-bottom: 6px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.stat-label {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.stat-value {
+    font-size: 18px;
+    font-weight: bold;
+    color: #ffd700;
+}
+
+/* ===== 设置面板 ===== */
+.settings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 16px 0;
+}
+
+.settings-toggle {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    color: #fff;
+    font-size: 15px;
+    padding: 14px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.settings-toggle:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.settings-toggle.off {
+    opacity: 0.55;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* ===== 文字按钮(返回菜单) ===== */
+.game-btn.btn-text {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.6);
+    box-shadow: none;
+    font-size: 16px;
+    margin-top: 8px;
+    padding: 10px 24px;
+}
+
+/* ===== 关卡过渡横幅 ===== */
+.level-banner {
+    position: fixed;
+    top: 45%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.5);
+    font-size: 42px;
+    font-weight: bold;
+    color: #ffd700;
+    text-shadow: 0 0 24px rgba(255, 215, 0, 0.8), 0 4px 12px rgba(0, 0, 0, 0.6);
+    z-index: 250;
+    opacity: 0;
+    transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+}
+
+.level-banner.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+}
+
+/* ===== 广告遮罩（模拟） ===== */
+.ad-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.92);
+    z-index: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ad-box {
+    text-align: center;
+    padding: 40px;
+}
+
+.ad-label {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+}
+
+.ad-countdown {
+    font-size: 72px;
+    font-weight: bold;
+    color: #ffd700;
+    text-shadow: 0 0 30px rgba(255, 215, 0, 0.6);
+}
+
+.ad-tip {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.3);
+    margin-top: 20px;
+}
+
+/* ===== 广告按钮 ===== */
+.game-btn.btn-ad {
+    background: linear-gradient(135deg, #ffb36b, #ee6a0a);
+    box-shadow: 0 4px 16px rgba(238, 106, 10, 0.4);
+    font-size: 17px;
+}
+
+.item-btn.ad-item {
+    border-color: rgba(255, 215, 0, 0.4);
+}
+
+.item-btn.ad-item .item-cost {
+    color: #6bff9e;
+    font-weight: bold;
+}
+
+/* ===== 连胜徽章 ===== */
+.streak-display {
+    min-width: 56px;
+    background: rgba(255, 120, 40, 0.18) !important;
+    border-color: rgba(255, 140, 60, 0.45) !important;
+}
+
+.streak-display .hud-value {
+    color: #ff9c4a;
+    text-shadow: 0 0 10px rgba(255, 140, 60, 0.7);
+}
+
+/* ===== 通关星级 + 连胜倍率 ===== */
+.level-stars {
+    font-size: 34px;
+    letter-spacing: 6px;
+    margin: 6px 0 4px;
+    text-shadow: 0 0 16px rgba(255, 215, 0, 0.6);
+}
+
+.level-mult {
+    font-size: 15px;
+    color: #ff9c4a !important;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+/* ===== 关卡地图 ===== */
+.level-map-info {
+    font-size: 14px;
+    color: rgba(255, 215, 0, 0.85);
+    margin: 6px 0 12px;
+}
+
+.level-map-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.map-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 4px;
+    min-height: 58px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.map-cell:hover:not(.locked) {
+    background: rgba(255, 255, 255, 0.18);
+    transform: scale(1.06);
+}
+
+.map-cell.locked {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.map-num {
+    font-size: 17px;
+    font-weight: bold;
+    color: #fff;
+}
+
+.map-stars {
+    font-size: 10px;
+    margin-top: 2px;
+    letter-spacing: 1px;
+}
+
+/* ===== 签到 ===== */
+.panel-sub {
+    font-size: 15px;
+    color: rgba(255, 215, 0, 0.85);
+    margin: 14px 0 8px;
+    text-align: left;
+}
+
+.checkin-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.checkin-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 2px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.checkin-cell.done {
+    border-color: rgba(107, 255, 158, 0.5);
+    background: rgba(107, 255, 158, 0.12);
+}
+
+.checkin-cell.active {
+    border-color: rgba(255, 215, 0, 0.7);
+    background: rgba(255, 215, 0, 0.15);
+    animation: timerPulse 1.2s ease infinite;
+}
+
+.checkin-day {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.checkin-reward {
+    font-size: 12px;
+    font-weight: bold;
+    color: #ffd700;
+    margin-top: 3px;
+}
+
+/* ===== 每日任务 ===== */
+.quest-list {
+    text-align: left;
+    margin-bottom: 14px;
+}
+
+.quest-item {
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.quest-item.claimed {
+    opacity: 0.55;
+}
+
+.quest-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.quest-desc {
+    font-size: 13px;
+    color: #fff;
+}
+
+.quest-progress {
+    font-size: 12px;
+    color: rgba(255, 215, 0, 0.9);
+    font-weight: bold;
+}
+
+.quest-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+}
+
+.quest-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #6bff9e, #ffd700);
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+.quest-claim-btn {
+    margin-top: 8px;
+    width: 100%;
+    padding: 7px;
+    font-size: 13px;
+    font-weight: bold;
+    color: #1a0a2e;
+    background: linear-gradient(135deg, #ffd700, #ffb36b);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.quest-claimed {
+    display: block;
+    margin-top: 6px;
+    font-size: 12px;
+    color: rgba(107, 255, 158, 0.9);
+}
+
+/* ============================================================
+   国风主题（传统色 + 纸纹 + 墨边）
+   保持形状差异化（色盲友好），仅替换配色与质感
+   ============================================================ */
+body[data-theme="guofeng"] {
+    background: linear-gradient(160deg, #2b2118 0%, #3a2f24 50%, #1f1a14 100%);
+}
+
+body[data-theme="guofeng"] #board {
+    background: rgba(20, 14, 10, 0.62);
+    border-color: rgba(217, 164, 65, 0.28);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+body[data-theme="guofeng"] .cell {
+    background: rgba(217, 164, 65, 0.05);
+}
+
+/* 朱红 - 圆形 */
+body[data-theme="guofeng"] .candy-red {
+    background: radial-gradient(circle at 32% 28%, #e0654a, #a8351f 78%);
+    box-shadow: 0 2px 8px rgba(168, 53, 31, 0.6), inset 0 -4px 8px rgba(60, 15, 8, 0.45), inset 0 4px 8px rgba(255, 210, 190, 0.28);
+}
+
+/* 靛青 - 方形 */
+body[data-theme="guofeng"] .candy-blue {
+    background: linear-gradient(140deg, #4a7fa8, #23486b);
+    box-shadow: 0 2px 8px rgba(35, 72, 107, 0.6), inset 0 -4px 8px rgba(10, 25, 40, 0.45), inset 0 4px 8px rgba(200, 225, 245, 0.25);
+}
+
+/* 石绿 - 菱形 */
+body[data-theme="guofeng"] .candy-green {
+    background: linear-gradient(140deg, #6f9e73, #3c6b45);
+    box-shadow: 0 2px 8px rgba(60, 107, 69, 0.6), inset 0 -4px 8px rgba(18, 38, 22, 0.45), inset 0 4px 8px rgba(210, 240, 215, 0.25);
+}
+
+/* 藤黄 - 六边形（月饼质感：同心环纹） */
+body[data-theme="guofeng"] .candy-yellow {
+    background:
+        radial-gradient(circle at 50% 50%, rgba(255, 240, 200, 0.55) 0 18%, transparent 19% 26%, rgba(255, 240, 200, 0.4) 27% 32%, transparent 33%),
+        linear-gradient(140deg, #e3b85c, #b8862c);
+    box-shadow: 0 2px 8px rgba(184, 134, 44, 0.6), inset 0 0 10px rgba(90, 60, 10, 0.35);
+}
+
+/* 紫棠 - 圆角方（云纹） */
+body[data-theme="guofeng"] .candy-purple {
+    background:
+        radial-gradient(circle at 26% 26%, rgba(240, 220, 255, 0.35) 0 22%, transparent 23%),
+        radial-gradient(circle at 74% 74%, rgba(240, 220, 255, 0.28) 0 18%, transparent 19%),
+        linear-gradient(140deg, #8a6b9c, #563a68);
+    box-shadow: 0 2px 8px rgba(86, 58, 104, 0.6), inset 0 -4px 8px rgba(30, 15, 40, 0.45);
+}
+
+/* 琥珀 - 星形（灯笼金） */
+body[data-theme="guofeng"] .candy-orange {
+    background: linear-gradient(140deg, #d99a55, #a8622a);
+    box-shadow: 0 2px 8px rgba(168, 98, 42, 0.6), inset 0 -4px 8px rgba(70, 35, 10, 0.45);
+}
+
+/* 国风 HUD / 面板配色 */
+body[data-theme="guofeng"] .hud-item {
+    background: rgba(217, 164, 65, 0.1);
+    border-color: rgba(217, 164, 65, 0.22);
+}
+
+body[data-theme="guofeng"] .overlay-content {
+    background: linear-gradient(150deg, #2e2419, #1c1610);
+    border-color: rgba(217, 164, 65, 0.32);
+}
+
+body[data-theme="guofeng"] .game-btn {
+    background: linear-gradient(135deg, #c8452f, #8f2a1a);
+    box-shadow: 0 4px 16px rgba(143, 42, 26, 0.45);
+}
+
+body[data-theme="guofeng"] .game-btn.btn-secondary {
+    background: linear-gradient(135deg, #4a7fa8, #23486b);
+    box-shadow: 0 4px 16px rgba(35, 72, 107, 0.45);
+}
+
+body[data-theme="guofeng"] #progress-bar {
+    background: linear-gradient(90deg, #b8862c, #e3b85c, #b8862c);
+}
+
+/* ===== 记忆碎片收集册 ===== */
+.story-count {
+    font-size: 14px;
+    color: rgba(255, 215, 0, 0.9);
+    margin: 6px 0 12px;
+}
+
+.story-list {
+    text-align: left;
+    margin-bottom: 14px;
+}
+
+.story-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.story-item:hover:not(.locked) {
+    background: rgba(255, 215, 0, 0.14);
+}
+
+.story-item.locked {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.story-item-title {
+    font-size: 14px;
+    color: #fff;
+    font-weight: bold;
+}
+
+.story-item-need {
+    font-size: 12px;
+    color: rgba(255, 215, 0, 0.75);
+}
+
+.story-reader {
+    text-align: left;
+    padding: 16px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 215, 0, 0.2);
+    margin-bottom: 12px;
+}
+
+.story-reader h2 {
+    font-size: 17px;
+    color: #ffd700;
+    margin-bottom: 10px;
+}
+
+.story-reader p {
+    font-size: 14px;
+    line-height: 1.9;
+    color: rgba(255, 255, 255, 0.88);
+}
+
+body[data-theme="guofeng"] .story-reader p {
+    font-family: 'Songti SC', 'STSong', 'PingFang SC', serif;
+    letter-spacing: 0.5px;
+}
+
+/* ============================================================
+   障碍物：冰块 / 果冻
+   ============================================================ */
+.cell.ob-jelly {
+    background: radial-gradient(circle at 50% 60%, rgba(255, 190, 220, 0.5), rgba(200, 120, 170, 0.32));
+    box-shadow: inset 0 0 10px rgba(255, 170, 210, 0.45);
+    border: 1px solid rgba(255, 190, 220, 0.4);
+}
+
+.cell.ob-jelly::after {
+    content: '';
+    position: absolute;
+    inset: 6%;
+    border-radius: 10px;
+    border: 1px dashed rgba(255, 220, 240, 0.5);
+    pointer-events: none;
+}
+
+.cell.ob-ice {
+    background: linear-gradient(150deg, rgba(190, 230, 255, 0.45), rgba(120, 180, 230, 0.3));
+    box-shadow: inset 0 0 12px rgba(200, 240, 255, 0.6), 0 0 6px rgba(150, 210, 255, 0.35);
+    border: 1px solid rgba(200, 240, 255, 0.5);
+}
+
+.cell.ob-ice::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    background:
+        linear-gradient(115deg, transparent 42%, rgba(255, 255, 255, 0.55) 46%, transparent 50%),
+        linear-gradient(65deg, transparent 60%, rgba(255, 255, 255, 0.35) 64%, transparent 68%);
+    pointer-events: none;
+}
+
+.cell.ob-ice-2 {
+    background: linear-gradient(150deg, rgba(160, 210, 245, 0.6), rgba(90, 150, 210, 0.45));
+    box-shadow: inset 0 0 14px rgba(210, 245, 255, 0.75), 0 0 8px rgba(130, 195, 255, 0.5);
+}
+
+.cell.ob-ice .candy {
+    filter: saturate(0.55) brightness(1.12);
+}
+
+/* 国风主题下的障碍配色 */
+body[data-theme="guofeng"] .cell.ob-jelly {
+    background: radial-gradient(circle at 50% 60%, rgba(230, 200, 150, 0.42), rgba(170, 130, 80, 0.3));
+    box-shadow: inset 0 0 10px rgba(230, 200, 150, 0.4);
+    border-color: rgba(230, 200, 150, 0.4);
+}
+
+body[data-theme="guofeng"] .cell.ob-ice {
+    background: linear-gradient(150deg, rgba(200, 225, 235, 0.42), rgba(120, 165, 190, 0.3));
+    box-shadow: inset 0 0 12px rgba(215, 240, 250, 0.55), 0 0 6px rgba(150, 200, 220, 0.32);
+    border-color: rgba(215, 240, 250, 0.45);
+}

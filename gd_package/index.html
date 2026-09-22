@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#1a0a2e">
+    <title>糖果消消乐 - Candy Match</title>
+    <meta name="description" content="糖果消消乐是一款经典的消除类休闲游戏。交换相邻糖果，匹配三个或以上即可消除，还有条纹糖果、彩色炸弹等特殊道具，快来挑战吧！">
+    <meta name="keywords" content="消消乐,消除游戏,糖果消消乐,休闲游戏,益智游戏,三消,match3,candy match">
+    <meta name="author" content="Candy Match Studio">
+    <meta property="og:title" content="糖果消消乐 - Candy Match">
+    <meta property="og:description" content="经典消除类休闲游戏，交换糖果，匹配消除，挑战高分！">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="糖果消消乐">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="糖果消消乐">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="icon" type="image/png" href="icon-192.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- 背景装饰光斑 -->
+    <div class="bg-deco deco-1"></div>
+    <div class="bg-deco deco-2"></div>
+    <div class="bg-deco deco-3"></div>
+    <div class="bg-deco deco-4"></div>
+    <div id="game-container">
+        <div id="hud">
+            <div class="hud-item"><span class="hud-label">关卡</span><span id="level-display" class="hud-value">1</span></div>
+            <div class="hud-item"><span class="hud-label">分数</span><span id="score-display" class="hud-value">0</span></div>
+            <div class="hud-item"><span class="hud-label">步数</span><span id="moves-display" class="hud-value">30</span></div>
+            <div class="hud-item star-display"><span class="hud-label">⭐</span><span id="star-count" class="hud-value">0</span></div>
+            <div class="hud-item streak-display" id="streak-badge" style="display:none"><span class="hud-label">连胜</span><span id="streak-count" class="hud-value">0</span></div>
+            <div class="hud-controls">
+                <button id="sound-btn" class="ctrl-btn" title="音效开关"><span id="sound-icon">🔊</span></button>
+                <button id="pause-btn" class="ctrl-btn" title="暂停"><span>⏸</span></button>
+            </div>
+        </div>
+        <div id="progress-bar-container"><div id="progress-bar"></div><span id="progress-text">0 / 1000</span></div>
+        <div id="item-bar">
+            <button id="item-extra-moves" class="item-btn" title="+3步 (30⭐)"><span class="item-icon">➕</span><span class="item-cost">30⭐</span></button>
+            <button id="item-hammer" class="item-btn" title="锤子 (50⭐)"><span class="item-icon">🔨</span><span class="item-cost">50⭐</span></button>
+            <button id="item-shuffle" class="item-btn" title="洗牌 (20⭐)"><span class="item-icon">🔄</span><span class="item-cost">20⭐</span></button>
+            <button id="item-ad-moves" class="item-btn ad-item" title="看广告+5步"><span class="item-icon">📺</span><span class="item-cost">免费</span></button>
+        </div>
+        <div id="board"></div>
+        <div id="combo-text"></div>
+        <div id="particles"></div>
+
+        <!-- 开始界面 -->
+        <div id="start-screen" class="overlay">
+            <div class="overlay-content">
+                <h1>🍬 糖果消消乐</h1>
+                <p class="subtitle">Match 3 or more candies!</p>
+                <div class="instructions">
+                    <p>🎯 交换相邻糖果，匹配3个或以上</p>
+                    <p>⭐ 4连消→条纹糖 · 5连消→彩色炸弹</p>
+                    <p>✚ L/T形→十字糖 · 特殊组合→大爆炸！</p>
+                    <p>🗺️ 部分关卡需收集指定颜色糖果</p>
+                </div>
+                <div id="best-record" class="best-record hidden">
+                    <p>🏆 最高分：<span id="best-score-val">0</span></p>
+                    <p>🎯 最高关卡：<span id="best-level-val">1</span></p>
+                </div>
+                <div class="mode-select">
+                    <button id="start-btn" class="game-btn">经典模式</button>
+                    <button id="daily-btn" class="game-btn btn-secondary">⏱ 每日挑战</button>
+                </div>
+                <div class="start-extra-btns">
+                    <button id="continue-btn" class="continue-btn hidden">▶ 继续游戏</button>
+                    <div class="text-btn-row">
+                        <button id="level-map-btn" class="text-btn">🗺️ 关卡</button>
+                        <button id="daily-panel-btn" class="text-btn">📅 签到</button>
+                        <button id="story-btn" class="text-btn">🧩 碎片</button>
+                        <button id="achievements-btn" class="text-btn">🏆 成就</button>
+                        <button id="stats-btn" class="text-btn">📊 统计</button>
+                        <button id="settings-btn" class="text-btn">⚙ 设置</button>
+                    </div>
+                </div>
+                <div class="compliance-info">
+                    <p class="age-rating">适龄提示：4+</p>
+                    <p class="health-notice">健康游戏忠告：抵制不良游戏，拒绝盗版游戏。注意自我保护，谨防受骗上当。适度游戏益脑，沉迷游戏伤身。合理安排时间，享受健康生活。</p>
+                    <a href="privacy.html" target="_blank" class="privacy-link">隐私政策</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 暂停界面 -->
+        <div id="pause-screen" class="overlay hidden">
+            <div class="overlay-content">
+                <h1>⏸ 已暂停</h1>
+                <button id="resume-btn" class="game-btn">继续游戏</button>
+                <button id="settings-pause-btn" class="game-btn btn-secondary">⚙ 设置</button>
+                <button id="restart-from-pause-btn" class="game-btn btn-text">重新开始</button>
+                <button id="back-to-menu-btn" class="game-btn btn-text">返回主菜单</button>
+            </div>
+        </div>
+
+        <!-- 关卡完成界面 -->
+        <div id="level-complete" class="overlay hidden">
+            <div class="overlay-content">
+                <h1>🎉 通关！</h1>
+                <div id="level-stars" class="level-stars">☆☆☆</div>
+                <p id="level-mult" class="level-mult"></p>
+                <p>分数：<span id="final-score">0</span></p>
+                <p>剩余步数奖励：<span id="bonus-score">0</span></p>
+                <p>获得星币：<span id="stars-earned">0</span> ⭐</p>
+                <button id="next-level-btn" class="game-btn">下一关</button>
+                <button id="level-map-btn2" class="game-btn btn-text">🗺️ 关卡地图</button>
+            </div>
+        </div>
+
+        <!-- 游戏结束界面 -->
+        <div id="game-over" class="overlay hidden">
+            <div class="overlay-content">
+                <h1>💔 游戏结束</h1>
+                <p>最终分数：<span id="game-over-score">0</span></p>
+                <p>到达关卡：<span id="game-over-level">1</span></p>
+                <button id="revive-ad-btn" class="game-btn btn-ad">📺 看广告复活（+10步）</button>
+                <button id="restart-btn" class="game-btn">重新开始</button>
+                <button id="back-to-menu-btn2" class="game-btn btn-text">返回主菜单</button>
+            </div>
+        </div>
+
+        <!-- 成就面板 -->
+        <div id="achievements-panel" class="overlay hidden">
+            <div class="overlay-content ach-content">
+                <h1>🏆 成就</h1>
+                <div id="ach-list"></div>
+                <button id="ach-close-btn" class="game-btn">关闭</button>
+            </div>
+        </div>
+
+        <!-- 关卡地图 -->
+        <div id="level-map" class="overlay hidden">
+            <div class="overlay-content ach-content">
+                <h1>🗺️ 关卡地图</h1>
+                <p class="level-map-info">累计星数：<span id="map-total-stars">0</span> / <span id="map-max-stars">0</span></p>
+                <div id="level-map-grid" class="level-map-grid"></div>
+                <button id="map-close-btn" class="game-btn">关闭</button>
+            </div>
+        </div>
+
+        <!-- 签到 + 每日任务 -->
+        <div id="daily-panel" class="overlay hidden">
+            <div class="overlay-content ach-content">
+                <h1>📅 每日福利</h1>
+                <h2 class="panel-sub">连续签到</h2>
+                <div id="checkin-row" class="checkin-row"></div>
+                <button id="checkin-btn" class="game-btn">领取今日奖励</button>
+                <h2 class="panel-sub">每日任务</h2>
+                <div id="quest-list" class="quest-list"></div>
+                <button id="daily-close-btn" class="game-btn btn-text">关闭</button>
+            </div>
+        </div>
+
+        <!-- 记忆碎片收集册 -->
+        <div id="story-panel" class="overlay hidden">
+            <div class="overlay-content ach-content">
+                <h1>🧩 记忆碎片</h1>
+                <p class="story-count">已收集：<span id="frag-count">0</span> 片</p>
+                <div id="story-list" class="story-list"></div>
+                <div id="story-reader" class="story-reader hidden">
+                    <h2 id="story-title"></h2>
+                    <p id="story-body"></p>
+                    <button id="story-back-btn" class="game-btn btn-text">返回目录</button>
+                </div>
+                <button id="story-close-btn" class="game-btn">关闭</button>
+            </div>
+        </div>
+
+        <!-- 统计面板 -->
+        <div id="stats-panel" class="overlay hidden">
+            <div class="overlay-content ach-content">
+                <h1>📊 游戏统计</h1>
+                <div class="stat-grid">
+                    <div class="stat-row"><span class="stat-label">总局数</span><span id="stat-games" class="stat-value">0</span></div>
+                    <div class="stat-row"><span class="stat-label">累计消除</span><span id="stat-cleared" class="stat-value">0</span></div>
+                    <div class="stat-row"><span class="stat-label">最高连击</span><span id="stat-bestcombo" class="stat-value">0</span></div>
+                    <div class="stat-row"><span class="stat-label">特殊糖果</span><span id="stat-specials" class="stat-value">0</span></div>
+                    <div class="stat-row"><span class="stat-label">历史最高分</span><span id="stat-best-score" class="stat-value">0</span></div>
+                    <div class="stat-row"><span class="stat-label">累计时长</span><span id="stat-time" class="stat-value">0秒</span></div>
+                </div>
+                <button id="stats-close-btn" class="game-btn">关闭</button>
+            </div>
+        </div>
+
+        <!-- 设置面板 -->
+        <div id="settings-panel" class="overlay hidden">
+            <div class="overlay-content ach-content">
+                <h1>⚙ 设置</h1>
+                <div class="settings-list">
+                    <button id="theme-toggle" class="settings-toggle">🎨 主题：经典糖果</button>
+                    <button id="music-toggle" class="settings-toggle">🎵 背景音乐：开</button>
+                    <button id="sound-toggle" class="settings-toggle">🔊 音效：开</button>
+                    <button id="vibration-toggle" class="settings-toggle">📳 震动：开</button>
+                </div>
+                <button id="settings-close-btn" class="game-btn">关闭</button>
+            </div>
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
