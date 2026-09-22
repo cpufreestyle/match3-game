@@ -30,12 +30,58 @@ html, body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: flex-start;
+    /* 竖屏大屏时垂直居中，充分利用空间 */
+    justify-content: safe center;
     padding-top: max(10px, env(safe-area-inset-top));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
     padding-left: max(10px, env(safe-area-inset-left));
     padding-right: max(10px, env(safe-area-inset-right));
     max-width: 500px;
     margin: 0 auto;
+    overflow-y: auto;
+}
+
+/* ===== 背景装饰（漂浮糖果光斑） ===== */
+.bg-deco {
+    position: fixed;
+    border-radius: 50%;
+    opacity: 0.07;
+    pointer-events: none;
+    z-index: 0;
+    animation: bgFloat 14s ease-in-out infinite alternate;
+}
+
+.bg-deco.deco-1 {
+    width: 180px; height: 180px;
+    top: 10%; left: -40px;
+    background: radial-gradient(circle at 35% 35%, #ff6b6b, transparent 70%);
+}
+
+.bg-deco.deco-2 {
+    width: 120px; height: 120px;
+    top: 50%; right: -30px;
+    background: radial-gradient(circle at 35% 35%, #6bb6ff, transparent 70%);
+    animation-delay: -5s;
+}
+
+.bg-deco.deco-3 {
+    width: 90px; height: 90px;
+    bottom: 14%; left: 12%;
+    background: radial-gradient(circle at 35% 35%, #ffd700, transparent 70%);
+    animation-delay: -9s;
+}
+
+.bg-deco.deco-4 {
+    width: 140px; height: 140px;
+    bottom: 28%; right: 8%;
+    background: radial-gradient(circle at 35% 35%, #c46bff, transparent 70%);
+    animation-delay: -7s;
+}
+
+@keyframes bgFloat {
+    0% { transform: translateY(0) rotate(0deg); }
+    100% { transform: translateY(-28px) rotate(10deg); }
+}
 }
 
 /* ===== 顶部HUD ===== */
